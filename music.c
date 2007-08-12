@@ -1,5 +1,9 @@
+#define MUSIC_NO_MODULE
+#include "music.h"
+
 #include <ctype.h>
 #include <errno.h>
+#include <limits.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -11,10 +15,17 @@
 #include <dlfcn.h>
 #include <fcntl.h>
 #include <unistd.h>
-#include <signal.h>
 
-#define MUSIC_NO_MODULE
-#include "music.h"
+#ifdef HAVE_POLL
+# include <poll.h>
+#else
+# include <sys/select.h>
+# include <sys/time.h>
+#endif
+
+
+volatile int music_running = 1;
+int sleep_pipe_fd;
 
 
 static int  config_line(struct module *m, const char *opt, const char *arg)
@@ -25,9 +36,11 @@ static int  parse_line(char *buf, struct module **m_)
 
 static int  sig = 0;
 static void got_sig(int signum);
+static void ignore_sig(int signum);
 
 
 struct config {
+	pthread_mutex_t log_mutex;
 	char    *logfile;
 	unsigned loglevel;
 	unsigned logboth;
@@ -37,7 +50,7 @@ struct config {
 
 /****************************** Main ******************************/
 int main(int argc, char **argv) {
-	struct config cfg = { 0, LOG_NOTICE, 0 };
+	struct config cfg = { PTHREAD_MUTEX_INITIALIZER, 0, LOG_NOTICE, 0 };
 	struct module_functions functions = {
 		0, 0, 0, config_line, 0
 	};
@@ -50,6 +63,7 @@ int main(int argc, char **argv) {
 	}, *m;
 	char *ch;
 	int i;
+	int pipe_fds[2];
 
 	core.f = &functions;
 	core.core = &core;
@@ -105,7 +119,7 @@ int main(int argc, char **argv) {
 			return 1;
 		}
 		fflush(stderr);
-		dup2(i, 2); /* stderr is nog logfile */
+		dup2(i, 2); /* stderr is not logfile */
 		close(i);
 	}
 
@@ -132,7 +146,6 @@ int main(int argc, char **argv) {
 	}
 
 	chdir("/");
-
 	cfg.logboth = 0;
 	i = sysconf(_SC_OPEN_MAX);
 	while (--i > 2) {
@@ -144,6 +157,14 @@ int main(int argc, char **argv) {
 	dup2(0, 1);                /* stdout is /dev/null */
 
 
+	/* Create sleep pipe */
+	if (pipe(pipe_fds)) {
+		music_log_errno(&core, LOG_FATAL, "pipe");
+		return 1;
+	}
+	sleep_pipe_fd = pipe_fds[0];
+
+
 	/* Register signal handler */
 	signal(SIGHUP,  got_sig);
 	signal(SIGINT,  got_sig);
@@ -151,9 +172,11 @@ int main(int argc, char **argv) {
 	signal(SIGQUIT, got_sig);
 	signal(SIGSEGV, got_sig);
 	signal(SIGTERM, got_sig);
+	signal(SIGALRM, ignore_sig);
 
 
 	/* Start everything */
+	pthread_mutex_init(&cfg.log_mutex, 0);
 	for (m = core.next; m; m = m->next) {
 		struct module *m2;
 		i = sig;
@@ -170,15 +193,22 @@ int main(int argc, char **argv) {
 	}
 
 	/* Wait for signal */
-	if (!sig) pause();
-	music_log(&core, LOG_NOTICE + 2, "got signal %d; exiting", sig);
+	while (music_running) {
+		pause();
+	}
+	if (sig) {
+		music_log(&core, LOG_NOTICE + 2, "got signal %d; exiting", sig);
+	}
 
 	/* Stop everything */
+	write(pipe_fds[1], "B", 1);
 	for (m = core.next; m; m = m->next) {
 		music_log(m, LOG_NOTICE + 2, "stopping");
 		if (m->f->stop) m->f->stop(m);
 	}
 
+	/* OS will free all resources we were using so no need to do it
+	   ourselfves */
 	music_log(&core, LOG_NOTICE, "terminated");
 	return 0;
 }
@@ -320,42 +350,92 @@ static int  config_line(struct module *m, const char *opt, const char *arg) {
 
 /****************************** Got Sig ******************************/
 static void got_sig(int signum) {
+	music_running = 0;
 	if (!sig) {
 		sig = signum;
 	} else {
 		abort();
 	}
+	signal(signum, got_sig);
+}
+
+static void ignore_sig(int signum) {
+	signal(signum, ignore_sig);
 }
 
 
 
 /****************************** Music Log ******************************/
-void music_log (struct module *m, unsigned level, const char *fmt, ...){
-	static char buf[32];
-	struct config *cfg = (struct config *)m->core->data;
+static void music_log_internal(struct module *m, unsigned level,
+                               const char *fmt, va_list ap, int errStr);
+
+void music_log (struct module *m, unsigned level, const char *fmt, ...) {
 	va_list ap;
+	va_start(ap, fmt);
+	music_log_internal(m, level, fmt, ap, 0);
+}
+
+void music_log_errno(struct module *m, unsigned level, const char *fmt, ...) {
+	va_list ap;
+	va_start(ap, fmt);
+	music_log_internal(m, level, fmt, ap, 1);
+}
+
+
+static void music_log_internal_do(FILE *stream, const char *date,
+                                  const char *name,
+                                  const char *fmt, va_list ap,
+                                  const char *error)
+	__attribute__((nonnull(1,2,3)));
+
+static void music_log_internal(struct module *m, unsigned level,
+                               const char *fmt, va_list ap, int errStr) {
+	static char buf[32];
+	struct config *cfg = m->core->data;
+	va_list ap2;
+	char *str;
 	time_t t;
 
 	if (cfg->loglevel < level) return;
+
+	pthread_mutex_lock(&cfg->log_mutex);
 
 	t = time(0);
 	if (!strftime(buf, sizeof buf, "[%Y/%m/%d %H:%M:%S] ", gmtime(&t))) {
 		buf[0] = 0;
 	}
 
-	fprintf(stderr, "%s%s: ", buf, m->name);
-	va_start(ap, fmt);
-	vfprintf(stderr, fmt, ap);
-	va_end(ap);
-	putc('\n', stderr);
+	str = errStr ? strerror(errno) : 0;
 
-	if (!cfg->logboth) return;
+	if (cfg->logboth) {
+#if defined __GNUC__ && defined __va_copy
+		/* In case -pedantic -ansi was added */
+		__va_copy(ap2, ap);
+#else
+		va_copy(ap2, ap);
+#endif
+		music_log_internal_do(stderr, buf, m->name, fmt, ap, str);
+		music_log_internal_do(stdout, buf, m->name, fmt, ap2, str);
+	} else {
+		music_log_internal_do(stderr, buf, m->name, fmt, ap, str);
+	}
 
-	fprintf(stdout, "%s%s: ", buf, m->name);
-	va_start(ap, fmt);
-	vfprintf(stdout, fmt, ap);
+	pthread_mutex_unlock(&cfg->log_mutex);
+}
+
+
+static void music_log_internal_do(FILE *stream, const char *date,
+                                  const char *name,
+                                  const char *fmt, va_list ap,
+                                  const char *error) {
+	fprintf(stream, "%s%s: ", date, name);
+	vfprintf(stream, fmt, ap);
 	va_end(ap);
-	putc('\n', stdout);
+	if (error) {
+		fprintf(stream, ": %s\n", error);
+	} else {
+		putc('\n', stream);
+	}
 }
 
 
@@ -407,4 +487,44 @@ char *music_strdup_realloc(char *old, const char *str) {
 	old = realloc(old, len);
 	memcpy(old, str, len);
 	return old;
+}
+
+
+
+/****************************** Poll ******************************/
+int music_sleep(struct module *m, unsigned long mili) {
+	int ret = 0;
+
+#ifdef HAVE_POLL
+	struct pollfd fd = { 0, POLLIN, 0 };
+	if (!mili) return 0;
+
+	fd.fd = sleep_pipe_fd;
+	while (mili > INT_MAX && !(ret = poll(&fd, 1, mili))) {
+		mili -= INT_MAX;
+	}
+	ret = ret ? ret : poll(&fd, 1, mili);
+#else
+	struct timeval timeout = {
+		mili / 1000,
+		(mili % 1000) * 1000
+	}
+	fd_set set;
+	if (!mili) return 0;
+
+	FD_ZERO(&set);
+	FD_SET(sleep_pipe_fd, &set);
+	ret = select(sleep_pipe_fd + 1, &set, 0, 0, &timeout);
+#endif
+
+	if (ret==-1) {
+#ifdef HAVE_POLL
+		music_log_errno(m, LOG_WARNING, "poll");
+#else
+		music_log_errno(m, LOG_WARNING, "select");
+#endif
+		return 1;
+	} else {
+		return !ret;
+	}
 }
