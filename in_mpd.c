@@ -1,6 +1,4 @@
-#include <errno.h>
 #include <unistd.h>
-#include <pthread.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -31,7 +29,6 @@ struct config {
 	pthread_t thread;
 	char *host, *password;
 	long port;
-	volatile int running;  /* not implemented */
 };
 
 
@@ -46,7 +43,6 @@ struct module *init() {
 	cfg = m->data = m + 1;
 
 	cfg->thread = 0;
-	cfg->running = 1;
 
 	cfg->host = music_strdup("localhost");
 	cfg->password = 0;
@@ -56,12 +52,11 @@ struct module *init() {
 }
 
 
-
 /****************************** Start ******************************/
 static int   module_start(struct module *m) {
 	struct config *const cfg = m->data;
 	if (pthread_create(&cfg->thread, 0, module_run, m)) {
-		music_log(m, LOG_FATAL, "pthread_create: %s", strerror(errno));
+		music_log_errno(m, LOG_FATAL, "pthread_create");
 		return 1;
 	}
 	return 0;
@@ -71,12 +66,7 @@ static int   module_start(struct module *m) {
 
 /****************************** Stop ******************************/
 static void  module_stop (struct module *m) {
-	/* FIXME: Doesn't take adventage of 'running'; simply cancels
-	   thread whereas should wake it up and wait for it to close
-	   itself. */
 	struct config *cfg = m->data;
-	cfg->running = 0;
-	pthread_cancel(cfg->thread);
 	pthread_join(cfg->thread, 0);
 }
 
@@ -124,7 +114,6 @@ static int  module_do_submit_song(struct module *m, mpd_Connection *conn,
 
 static void *module_run  (void *ptr) {
 	struct module *const m = ptr;
-	struct config *const cfg = m->data;
 
 	do {
 		mpd_Connection *conn = module_do_connect(m);
@@ -135,7 +124,7 @@ static void *module_run  (void *ptr) {
 		}
 		mpd_closeConnection(conn);
 
-	} while (cfg->running);
+	} while (music_running);
 
 	return 0;
 }
@@ -144,7 +133,7 @@ static void *module_run  (void *ptr) {
 
 static mpd_Connection *module_do_connect(struct module *m) {
 	struct config *const cfg = m->data;
-	int delay = 5;
+	unsigned delay = 5000;
 
 	do {
 		mpd_Connection *conn = mpd_newConnection(cfg->host, cfg->port, 10);
@@ -161,19 +150,18 @@ static mpd_Connection *module_do_connect(struct module *m) {
 		music_log(m, LOG_WARNING, "unable to connect to MPD: %s"
 		          "; waiting %ds to reconnect", conn->errorStr, delay);
 		mpd_closeConnection(conn);
-		sleep(delay);
-		if (delay<300) delay <<= 1;
-	} while (cfg->running);
+		music_sleep(m, delay * 1000);
+		if (delay<300000) delay <<= 1;
+	} while (music_running);
 	return 0;
 }
 
 
 
 static void module_do_songs(struct module *m, mpd_Connection *conn) {
-	struct config *const cfg = m->data;
 	int id = -1, count = 0, start;
 
-	while (cfg->running) {
+	while (music_running) {
 		mpd_Status *status;
 		int state, i;
 
