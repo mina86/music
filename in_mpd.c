@@ -19,9 +19,8 @@ static void *module_run  (void *ptr)        __attribute__((nonnull));
 static struct module_functions functions = {
 	module_start,
 	module_stop,
-	0,
 	module_conf,
-	0
+	0, 0, 0, 0, 0, 0
 };
 
 
@@ -33,13 +32,14 @@ struct config {
 
 
 
-struct module *init() {
+struct module *init(const char *name, const char *arg) {
 	struct config *cfg;
 	struct module *const m = malloc(sizeof *m + sizeof *cfg);
+	(void)(name = name); /* supress warning */
+	(void)(arg = arg); /* supress warning */
 
 	m->f = &functions;
 	m->name = 0;
-	m->core = m->next = 0;
 	cfg = m->data = m + 1;
 
 	cfg->thread = 0;
