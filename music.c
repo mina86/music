@@ -1,4 +1,4 @@
-#define MUSIC_NO_MODULE
+#define MUSIC_NOT_MODULE
 #include "music.h"
 
 #include <ctype.h>
@@ -41,6 +41,7 @@ static void ignore_sig(int signum);
 
 struct config {
 	pthread_mutex_t log_mutex;
+	struct module *cache;
 	char    *logfile;
 	unsigned loglevel;
 	unsigned logboth;
@@ -50,9 +51,9 @@ struct config {
 
 /****************************** Main ******************************/
 int main(int argc, char **argv) {
-	struct config cfg = { PTHREAD_MUTEX_INITIALIZER, 0, LOG_NOTICE, 0 };
+	struct config cfg = { PTHREAD_MUTEX_INITIALIZER, 0, 0, LOG_NOTICE, 0 };
 	struct module_functions functions = {
-		0, 0, 0, config_line, 0
+		0, 0, config_line, 0, 0, 0, 0, 0
 	};
 	struct module core = {
 		0,
@@ -96,8 +97,7 @@ int main(int argc, char **argv) {
 		char buf[1026];
 
 		if (!fp) {
-			music_log(&core, LOG_FATAL, "open: %s: %s", argv[i],
-			          strerror(errno));
+			music_log_errno(&core, LOG_FATAL, "open: %s", argv[i]);
 			return 1;
 		}
 
@@ -107,6 +107,10 @@ int main(int argc, char **argv) {
 			int result = parse_line(buf, &m);
 			if (result) return result;
 		}
+
+		if (fp!=stdin) {
+			fclose(fp);
+		}
 	}
 
 
@@ -114,8 +118,7 @@ int main(int argc, char **argv) {
 	if (cfg.logfile && *cfg.logfile) {
 		i = open(cfg.logfile, O_WRONLY | O_APPEND | O_CREAT, 0600);
 		if (i==-1) {
-			music_log(&core, LOG_FATAL, "open: %s: %s", cfg.logfile,
-			          strerror(errno));
+			music_log_errno(&core, LOG_FATAL, "open: %s", cfg.logfile);
 			return 1;
 		}
 		fflush(stderr);
@@ -129,7 +132,7 @@ int main(int argc, char **argv) {
 	/* Daemonize */
 	switch (fork()) {
 	case -1:
-		music_log(&core, LOG_FATAL, "fork: %s", strerror(errno));
+		music_log_errno(&core, LOG_FATAL, "fork");
 		return 1;
 	case  0: break;
 	default: return 0;
@@ -139,7 +142,7 @@ int main(int argc, char **argv) {
 
 	switch (fork()) {
 	case -1:
-		music_log(&core, LOG_FATAL, "fork: %s", strerror(errno));
+		music_log_errno(&core, LOG_FATAL, "fork");
 		return 1;
 	case  0: break;
 	default: return 0;
@@ -219,85 +222,109 @@ int main(int argc, char **argv) {
 static int  parse_line(char *buf, struct module **m_) {
 	struct module *m    = *m_;
 	struct module *core = m->core;
-	struct module *(*init)();
-	char *opt, *arg, *ch, *end;
+	struct module *(*init)(const char *name, const char *arg);
+	char *option, *moduleName, *argument, *ch, *end;
 	void *handle;
 	size_t len;
 
 
-	for (opt = buf;  isspace(*opt)            ; ++opt);
-	for (ch  = opt; !isspace(*ch ) && *ch!='#'; ++ch );
-	for (end = ch ;  isspace(*ch )            ; ++ch );
+	/* Split line into option and arguments */
+	for (option  = buf;         isspace(*option)         ; ++option);
+	for (ch  = option ; *ch && !isspace(*ch ) && *ch!='#'; ++ch);
+	for (end = ch     ;         isspace(*ch )            ; ++ch);
 	*end = 0;
-	if (!*opt) return 0;
+	if (!*option) return 0;
 	end = ch;
-	for (arg = ch ;          *ch   && *ch!='#'; ++ch ) {
+	for (argument = ch; *ch                   && *ch!='#'; ++ch) {
 		if (!isspace(*ch)) end = ch + 1;
 	}
 	*end = 0;
-	len = end - arg;
+	len = end - argument;
 
 
-	if (!strcmp(opt, "name")) {
+	/* "name" argument */
+	if (!strcmp(option, "name")) {
 		if (m==core) {
 			music_log(m, LOG_FATAL, "name: unknown option");
 			return 1;
-		}
-		if (!*arg) {
+		} else if (!*argument) {
 			music_log(m, LOG_FATAL, "name: argument expected");
 			return 1;
 		}
 		m->name = realloc(m->name, len + 1);
-		memcpy(m->name, arg, len + 1);
+		memcpy(m->name, argument, len + 1);
 		return 0;
 	}
 
 
-	if (strcmp(opt, "module")) {
+	/* Pass arguments to module */
+	if (strcmp(option, "module")) {
 		if (m->f->configLine) {
-			return m->f->configLine(m, opt, arg);
+			return m->f->configLine(m, option, argument);
 		} else {
-			music_log(m, LOG_FATAL, "%s: unknown option", opt);
+			music_log(m, LOG_FATAL, "%s: unknown option", option);
 			return 1;
 		}
 	}
 
 
-	if (!*arg) {
-		music_log(core, LOG_FATAL, "module: argument expected");
-		return 1;
-	}
-
+	/* Configuration for current module has ended */
 	if (m->f->configEnd) {
 		m->f->configEnd(m);
 	}
 
-	music_log(core, LOG_NOTICE, "%s: loading module", arg);
 
-	buf[0] = '.'; buf[1] = '/';
-	memmove(buf + 2, arg, len);
-	memcpy(buf + 2 + len, ".so", 4);
-	if (!(handle = dlopen(buf, RTLD_LAZY))) {
-		music_log(core, LOG_FATAL, "%s", dlerror());
+	/* Module to load not specified */
+	if (!*argument) {
+		music_log(core, LOG_FATAL, "module: argument expected");
 		return 1;
 	}
 
+
+	/* Split module name and argument */
+	for (ch = moduleName = argument; *ch && !isspace(ch); ++ch);
+	if (*ch) {
+		len = ch - moduleName;
+		*ch = 0;
+		while (isspace(*++ch));
+	}
+	memcpy(moduleName = malloc(len + 1), argument, len + 1);
+	argument = ch;
+
+
+	/* Load module */
+	music_log(core, LOG_NOTICE,
+	          *argument ? "%s: loading module (%s)" : "%s: loading module",
+	          moduleName, argument);
+
+	sprintf(buf, "./%s.so", moduleName);
+	handle = dlopen(buf, RTLD_LAZY);
+	if (!handle) {
+		music_log(core, LOG_FATAL, "%s", dlerror());
+		free(moduleName);
+		return 1;
+	}
+
+	/* Load "init" function */
 	dlerror();
 	if (!(handle = dlsym(handle, "init"))) {
 		music_log(core, LOG_FATAL, "%s", dlerror());
-	}
-
-	*(void **)&init = handle;
-	m = init();
-	if (!m) {
-		music_log(core, LOG_FATAL, "%s: init: unknown error", buf);
+		free(moduleName);
 		return 1;
 	}
 
-	m->name = malloc(len + 1);
-	memcpy(m->name, buf + 2, len);
-	m->name[len] = 0;
+	/* Run "init" function */
+	*(void **)&init = handle;
+	m = init(moduleName, argument);
+	if (!m) {
+		music_log(core, LOG_FATAL, "%s: init: unknown error", buf);
+		free(moduleName);
+		return 1;
+	}
 
+	/* Fill structure */
+	if (m->name) free(m->name);
+	m->name = moduleName;
 	m->next = core->next;
 	m->core = core;
 	core->next = m;
@@ -312,10 +339,21 @@ void  music_song(struct module *m, const struct song *song) {
 	/*struct module *core = m->core;
 	struct config *cfg  = core->data;*/
 
-	music_log(m, LOG_DEBUG, "got song: %s <%s> %s",
+	const char *error = 0;
+
+	if (!song->title) {
+		error = " (no title)";
+	} else if (song->length<30) {
+		error = " (song too short)";
+	}
+
+	music_log(m, error ? LOG_NOTICE : LOG_DEBUG,
+	          "%s song: %s <%s> %s [%u sec]%s",
+	          error ? "ignoring" : "got",
 	          song->artist ? song->artist : "(null)",
 	          song->album  ? song->album  : "(null)",
-	          song->title  ? song->title  : "(null)");
+	          song->title  ? song->title  : "(null)",
+	          song->length, error ? error : "");
 	return;
 }
 
