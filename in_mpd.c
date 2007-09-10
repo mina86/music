@@ -9,19 +9,13 @@
 
 
 
-static int   module_start(struct module *m) __attribute__((nonnull));
-static void  module_stop (struct module *m) __attribute__((nonnull));
-static int   module_conf (struct module *m, const char *opt, const char *arg)
-	__attribute__((nonnull));
+static int   module_start(const struct module *m) __attribute__((nonnull));
+static void  module_stop (const struct module *m) __attribute__((nonnull));
+static void  module_free (struct module *m) __attribute__((nonnull));
+static int   module_conf (const struct module *m, const char *opt,
+                          const char *arg)
+	__attribute__((nonnull(1)));
 static void *module_run  (void *ptr)        __attribute__((nonnull));
-
-
-static struct module_functions functions = {
-	module_start,
-	module_stop,
-	module_conf,
-	0, 0, 0, 0, 0, 0
-};
 
 
 struct config {
@@ -38,9 +32,15 @@ struct module *init(const char *name, const char *arg) {
 	(void)(name = name); /* supress warning */
 	(void)(arg = arg); /* supress warning */
 
-	m->f = &functions;
-	m->name = 0;
-	cfg = m->data = m + 1;
+	m->type        = MUSIC_IN;
+	m->start       = module_start;
+	m->stop        = module_stop;
+	m->free        = module_free;
+	m->config      = module_conf;
+	m->song.send   = 0;
+	m->retryCached = 0;
+	m->name        = 0;
+	cfg = m->data  = m + 1;
 
 	cfg->thread = 0;
 
@@ -53,27 +53,38 @@ struct module *init(const char *name, const char *arg) {
 
 
 /****************************** Start ******************************/
-static int   module_start(struct module *m) {
+static int   module_start(const struct module *m) {
 	struct config *const cfg = m->data;
-	if (pthread_create(&cfg->thread, 0, module_run, m)) {
+	if (pthread_create(&cfg->thread, 0, module_run, (void*)m)) {
 		music_log_errno(m, LOG_FATAL, "pthread_create");
-		return 1;
+		return 0;
 	}
-	return 0;
+	return 1;
 }
 
 
 
 /****************************** Stop ******************************/
-static void  module_stop (struct module *m) {
+static void  module_stop (const struct module *m) {
 	struct config *cfg = m->data;
 	pthread_join(cfg->thread, 0);
 }
 
 
 
+/****************************** Free ******************************/
+static void  module_free (struct module *m) {
+	struct config *const cfg = m->data;
+	free(cfg->host);
+	free(cfg->password);
+	music_module_free(m);
+}
+
+
+
 /****************************** Configuration ******************************/
-static int   module_conf (struct module *m, const char *opt, const char *arg) {
+static int   module_conf (const struct module *m,
+                          const char *opt, const char *arg) {
 	static const struct music_option options[] = {
 		{ "host",     1, 1 },
 		{ "port",     2, 2 },
@@ -81,6 +92,7 @@ static int   module_conf (struct module *m, const char *opt, const char *arg) {
 		{ 0, 0, 0 }
 	};
 	struct config *const cfg = m->data;
+	if (!opt) return 1;
 
 	switch (music_config(m, options, opt, arg, 1)) {
 	case 1:
@@ -94,10 +106,10 @@ static int   module_conf (struct module *m, const char *opt, const char *arg) {
 		break;
 	default:
 		/* Dead code */
-		return 1;
+		return 0;
 	}
 
-	return 0;
+	return 1;
 }
 
 
