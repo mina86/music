@@ -28,10 +28,12 @@ volatile int music_running = 1;
 int sleep_pipe_fd;
 
 
-static int  config_line(struct module *m, const char *opt, const char *arg)
-	__attribute__((nonnull));
+static int  config_line(const struct module *m,
+                        const char *opt, const char *arg)
+	__attribute__((nonnull(1)));
 static int  parse_line(char *buf, struct module **m_)
 	__attribute__((nonnull));
+static int  sort_modules(struct module *core) __attribute__((nonnull));
 
 
 static int  sig = 0;
@@ -41,37 +43,37 @@ static void ignore_sig(int signum);
 
 struct config {
 	pthread_mutex_t log_mutex;
-	struct module *cache;
 	char    *logfile;
-	unsigned loglevel;
-	unsigned logboth;
+	unsigned loglevel, logboth;
+	unsigned requireCache;
 };
 
 
 
 /****************************** Main ******************************/
 int main(int argc, char **argv) {
-	struct config cfg = { PTHREAD_MUTEX_INITIALIZER, 0, 0, LOG_NOTICE, 0 };
-	struct module_functions functions = {
-		0, 0, config_line, 0, 0, 0, 0, 0
+	struct config cfg = {
+		PTHREAD_MUTEX_INITIALIZER,
+		0, LOG_NOTICE, 0,
+		0
 	};
 	struct module core = {
-		0,
+		-1,
+		0, 0, 0,
+		config_line,
+		{ 0 }, 0,
+		0, 0,
 		(char*)"core",
-		0,
-		0,
 		0
 	}, *m;
 	char *ch;
-	int i;
-	int pipe_fds[2];
+	int i, returnValue = 0, pipe_fds[2];
 
-	core.f = &functions;
 	core.core = &core;
 	core.data = &cfg;
 
 
-	/* Get program name */
+	/***** Get program name *****/
 	for (core.name = ch = *argv; *ch; ++ch) {
 		if ((*ch=='/' || *ch=='\\') && ch[1] && ch[1]!='/' && ch[1]!='\\') {
 			core.name = ch + 1;
@@ -79,14 +81,14 @@ int main(int argc, char **argv) {
 	}
 
 
-	/* Help */
+	/***** Help *****/
 	if (argc>=2 && (!strcmp(argv[1], "-h") || !strcmp(argv[1], "--help"))) {
 		fputs("usage: music [ config-file ... ]\n", stdout);
 		return 0;
 	}
 
 
-	/* Read config */
+	/***** Read config *****/
 	if (argc<2) {
 		argv[1] = (char*)"-";
 		argc = 2;
@@ -113,8 +115,13 @@ int main(int argc, char **argv) {
 		}
 	}
 
+	if (sort_modules(&core)) {
+		return 1;
+	}
 
-	/* Open log file */
+
+
+	/***** Open log file *****/
 	if (cfg.logfile && *cfg.logfile) {
 		i = open(cfg.logfile, O_WRONLY | O_APPEND | O_CREAT, 0600);
 		if (i==-1) {
@@ -129,7 +136,8 @@ int main(int argc, char **argv) {
 	music_log(&core, LOG_NOTICE, "starting");
 	cfg.logboth = 1;
 
-	/* Daemonize */
+
+	/***** Daemonize *****/
 	switch (fork()) {
 	case -1:
 		music_log_errno(&core, LOG_FATAL, "fork");
@@ -160,7 +168,7 @@ int main(int argc, char **argv) {
 	dup2(0, 1);                /* stdout is /dev/null */
 
 
-	/* Create sleep pipe */
+	/***** Create sleep pipe *****/
 	if (pipe(pipe_fds)) {
 		music_log_errno(&core, LOG_FATAL, "pipe");
 		return 1;
@@ -168,7 +176,7 @@ int main(int argc, char **argv) {
 	sleep_pipe_fd = pipe_fds[0];
 
 
-	/* Register signal handler */
+	/***** Register signal handler *****/
 	signal(SIGHUP,  got_sig);
 	signal(SIGINT,  got_sig);
 	signal(SIGILL,  got_sig);
@@ -178,42 +186,89 @@ int main(int argc, char **argv) {
 	signal(SIGALRM, ignore_sig);
 
 
-	/* Start everything */
-	pthread_mutex_init(&cfg.log_mutex, 0);
-	for (m = core.next; m; m = m->next) {
-		struct module *m2;
-		i = sig;
-		if (!i) {
-			music_log(m, LOG_NOTICE + 2, "starting");
-			if (!m->f->start || !m->f->start(m)) continue;
-			music_log(m, LOG_FATAL, "error starting module");
+	/***** Start cache *****/
+	m = &core;
+	while (m->next && m->next->type==MUSIC_CACHE) {
+		struct module *prev = m;
+		m = m->next;
+
+		if (sig) {
+			goto finishSig;
 		}
-		for (m2 = core.next; m2 != m; m2 = m2->next) {
-			music_log(m, LOG_NOTICE + 2, "stopping");
-			if (m2->f->stop) m2->f->stop(m2);
+
+		music_log(m, LOG_NOTICE, "starting");
+		if (!m->start || m->start(m)) {
+			music_log(m, LOG_DEBUG, "this will be our cache");
+			break;
 		}
-		return i ? 0 : 1;
+
+		music_log(m, LOG_FATAL + 2, "error starting module");
+		prev->next = m->next;
+		if (m->free) m->free(m);
+		free(m);
+		m = prev;
 	}
 
-	/* Wait for signal */
+	/* Check cache */
+	if (m==&core && cfg.requireCache) {
+		music_log(m, LOG_FATAL, "no cache started");
+		returnValue = 1;
+		goto finishNoStop;
+	}
+
+	/* Free rest of the caches */
+	while (m->next && m->next->type==MUSIC_CACHE) {
+		struct module *next = m->next;
+		m->next = next->next;
+		if (next->free) next->free(next);
+		free(next);
+	}
+
+
+	/***** Start other modules *****/
+	while (m->next) {
+		struct module *prev = m;
+		m = m->next;
+
+		if (sig) {
+			goto finishSig;
+		}
+
+		music_log(m, LOG_NOTICE, "starting");
+		if (m->start && !m->start(m)) {
+			music_log(m, LOG_FATAL, "error starting module");
+			prev->next = 0;
+			returnValue = 1;
+			goto finishNoSig;
+		}
+	}
+
+
+	/***** Run *****/
 	while (music_running) {
 		pause();
 	}
+
+
+	/***** Check signal *****/
 	if (sig) {
+	finishSig:
 		music_log(&core, LOG_NOTICE + 2, "got signal %d; exiting", sig);
 	}
 
+ finishNoSig:
 	/* Stop everything */
 	write(pipe_fds[1], "B", 1);
 	for (m = core.next; m; m = m->next) {
 		music_log(m, LOG_NOTICE + 2, "stopping");
-		if (m->f->stop) m->f->stop(m);
+		if (m->stop) m->stop(m);
 	}
 
+ finishNoStop:
 	/* OS will free all resources we were using so no need to do it
 	   ourselfves */
 	music_log(&core, LOG_NOTICE, "terminated");
-	return 0;
+	return returnValue;
 }
 
 
@@ -259,8 +314,8 @@ static int  parse_line(char *buf, struct module **m_) {
 
 	/* Pass arguments to module */
 	if (strcmp(option, "module")) {
-		if (m->f->configLine) {
-			return m->f->configLine(m, option, argument);
+		if (m->config) {
+			return !m->config(m, option, argument);
 		} else {
 			music_log(m, LOG_FATAL, "%s: unknown option", option);
 			return 1;
@@ -269,8 +324,8 @@ static int  parse_line(char *buf, struct module **m_) {
 
 
 	/* Configuration for current module has ended */
-	if (m->f->configEnd) {
-		m->f->configEnd(m);
+	if (m->config && !m->config(m, 0, 0)) {
+		return 1;
 	}
 
 
@@ -282,7 +337,7 @@ static int  parse_line(char *buf, struct module **m_) {
 
 
 	/* Split module name and argument */
-	for (ch = moduleName = argument; *ch && !isspace(ch); ++ch);
+	for (ch = moduleName = argument; *ch && !isspace(*ch); ++ch);
 	if (*ch) {
 		len = ch - moduleName;
 		*ch = 0;
@@ -334,8 +389,48 @@ static int  parse_line(char *buf, struct module **m_) {
 
 
 
+/****************************** Sort modules ******************************/
+static int  sort_modules(struct module *core) {
+	struct module *buckets[3] = { 0, 0, 0 }, *last[3] = { 0, 0, 0 }, *m;
+	unsigned i;
+
+	/* Split into buckets */
+	m = core->next;
+	while (m) {
+
+		struct module *next = m->next;
+		unsigned type = (unsigned)m->type;
+
+		if (type>2) {
+			music_log(m, LOG_FATAL, "invalid module type: %d", (int)type);
+			return 1;
+		}
+
+		m->next = buckets[type];
+		buckets[type] = m;
+		if (!last[type]) {
+			last[type] = m;
+		}
+
+		m = next;
+	}
+
+	/* Connect buckets */
+	m = core;
+	for (i = 3; i; ) {
+		if (buckets[--i]) {
+			m->next = buckets[i];
+			m = last[i];
+		}
+	}
+
+	return 0;
+}
+
+
+
 /****************************** Put song ******************************/
-void  music_song(struct module *m, const struct song *song) {
+void  music_song(const struct module *m, const struct song *song) {
 	/*struct module *core = m->core;
 	struct config *cfg  = core->data;*/
 
@@ -360,17 +455,21 @@ void  music_song(struct module *m, const struct song *song) {
 
 
 /****************************** Config Line ******************************/
-static int  config_line(struct module *m, const char *opt, const char *arg) {
+static int  config_line(const struct module *m,
+                        const char *opt, const char *arg) {
 	static struct music_option options[] = {
 		{ "logfile" , 1, 1 },
-		{ "loglevel", 1, 2 },
+		{ "loglevel", 2, 2 },
+		{ "requirecache", 0, 3 },
 		{ 0, 0, 0 }
 	};
 	struct config *const cfg = m->data;
 
+	if (!opt) return 1;
+
 	switch (music_config(m, options, opt, arg, 1)) {
 	case -1:
-	case  0: return 1;
+	case  0: return 0;
 	case  1: {
 		size_t len = strlen(arg) + 1;
 		cfg->logfile = realloc(cfg->logfile, len);
@@ -380,8 +479,11 @@ static int  config_line(struct module *m, const char *opt, const char *arg) {
 	case  2:
 		cfg->loglevel = atoi(arg);
 		break;
+	case 3:
+		cfg->requireCache = 1;
+		break;
 	}
-	return 0;
+	return 1;
 }
 
 
@@ -404,16 +506,17 @@ static void ignore_sig(int signum) {
 
 
 /****************************** Music Log ******************************/
-static void music_log_internal(struct module *m, unsigned level,
+static void music_log_internal(const struct module *m, unsigned level,
                                const char *fmt, va_list ap, int errStr);
 
-void music_log (struct module *m, unsigned level, const char *fmt, ...) {
+void music_log (const struct module *m, unsigned level, const char *fmt, ...){
 	va_list ap;
 	va_start(ap, fmt);
 	music_log_internal(m, level, fmt, ap, 0);
 }
 
-void music_log_errno(struct module *m, unsigned level, const char *fmt, ...) {
+void music_log_errno(const struct module *m, unsigned level,
+                     const char *fmt, ...) {
 	va_list ap;
 	va_start(ap, fmt);
 	music_log_internal(m, level, fmt, ap, 1);
@@ -426,7 +529,7 @@ static void music_log_internal_do(FILE *stream, const char *date,
                                   const char *error)
 	__attribute__((nonnull(1,2,3)));
 
-static void music_log_internal(struct module *m, unsigned level,
+static void music_log_internal(const struct module *m, unsigned level,
                                const char *fmt, va_list ap, int errStr) {
 	static char buf[32];
 	struct config *cfg = m->core->data;
@@ -479,7 +582,7 @@ static void music_log_internal_do(FILE *stream, const char *date,
 
 
 /****************************** Music Config ******************************/
-int   music_config(struct module *m, const struct music_option *options,
+int   music_config(const struct module *m, const struct music_option *options,
                    const char *opt, const char *arg, int req) {
 	const struct music_option *o = options;
 	while (o->opt && strcmp(o->opt, opt)) ++o;
@@ -519,7 +622,17 @@ int   music_config(struct module *m, const struct music_option *options,
 
 
 
-/****************************** String Duplicate ******************************/
+/************************** Retry Cached 4 Module **************************/
+void music_retry_cached(const struct module *m) {
+	const struct module *cache = m->core->next;
+	if (cache && cache->type==MUSIC_CACHE && cache->retryCached) {
+		cache->retryCached(cache, 1, m);
+	}
+}
+
+
+
+/***************************** String Duplicate *****************************/
 char *music_strdup_realloc(char *old, const char *str) {
 	size_t len = strlen(str) + 1;
 	old = realloc(old, len);
@@ -530,7 +643,7 @@ char *music_strdup_realloc(char *old, const char *str) {
 
 
 /****************************** Poll ******************************/
-int music_sleep(struct module *m, unsigned long mili) {
+int music_sleep(const struct module *m, unsigned long mili) {
 	int ret = 0;
 
 #ifdef HAVE_POLL
@@ -565,4 +678,19 @@ int music_sleep(struct module *m, unsigned long mili) {
 	} else {
 		return !ret;
 	}
+}
+
+
+
+/****************************** Free ******************************/
+void music_module_free(struct module *m) {
+	free(m->name);
+	free(m);
+}
+
+
+void music_module_free_and_data(struct module *m) {
+	free(m->data);
+	free(m->name);
+	free(m);
 }
