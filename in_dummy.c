@@ -1,6 +1,6 @@
 /*
  * "Listening to" daemon dummy input module
- * $Id: in_dummy.c,v 1.5 2007/09/10 17:51:01 mina86 Exp $
+ * $Id: in_dummy.c,v 1.6 2007/09/19 00:10:32 mina86 Exp $
  * Copyright (c) 2007 by Michal Nazarewicz (mina86/AT/mina86.com)
  *
  * This program is free software; you can redistribute it and/or modify
@@ -38,8 +38,8 @@ struct config {
 struct module *init(const char *name, const char *arg) {
 	struct config *cfg;
 	struct module *const m = malloc(sizeof *m + sizeof *cfg);
-	(void)(name = name); /* supress warning */
-	(void)(arg = arg); /* supress warning */
+	(void)name; /* supress warning */
+	(void)arg;  /* supress warning */
 
 	m->type        = MUSIC_IN;
 	m->start       = module_start;
