@@ -1,6 +1,6 @@
 /*
  * "Listening to" daemon MPD input module
- * $Id: out_http.c,v 1.1 2007/09/19 00:11:22 mina86 Exp $
+ * $Id: out_http.c,v 1.2 2007/09/19 02:30:13 mina86 Exp $
  * Copyright (c) 2007 by Michal Nazarewicz (mina86/AT/mina86.com)
  *
  * This program is free software; you can redistribute it and/or modify
@@ -32,13 +32,15 @@
 #include <curl/curl.h>
 
 
-static int    module_start(const struct module *m) __attribute__((nonnull));
-static void   module_stop (const struct module *m) __attribute__((nonnull));
-static void   module_free (struct module *m) __attribute__((nonnull));
-static int    module_conf (const struct module *m, const char *opt,
+static int    module_start(const struct music_module *m)
+	__attribute__((nonnull));
+static void   module_stop (const struct music_module *m)
+	__attribute__((nonnull));
+static void   module_free (struct music_module *m) __attribute__((nonnull));
+static int    module_conf (const struct music_module *m, const char *opt,
                            const char *arg)
 	__attribute__((nonnull(1)));
-static size_t module_send (const struct module *m, size_t count,
+static size_t module_send (const struct music_module *m,
                            const struct song *const *songs,
                            size_t *errorPositions)
 	__attribute__((nonnull(1)));
@@ -71,9 +73,9 @@ struct config {
 static char userAgent[64] = "";
 
 
-struct module *init(const char *name, const char *arg) {
+struct music_module *init(const char *name, const char *arg) {
 	struct config *cfg;
-	struct module *const m = malloc(sizeof *m + sizeof *cfg);
+	struct music_module *const m = malloc(sizeof *m + sizeof *cfg);
 	(void)name; /* supress warning */
 	(void)arg;  /* supress warning */
 
@@ -110,7 +112,7 @@ struct module *init(const char *name, const char *arg) {
 
 
 /****************************** Start ******************************/
-static int   module_start(const struct module *m) {
+static int   module_start(const struct music_module *m) {
 	struct config *const cfg = m->data;
 	CURL *const request = cfg->request = curl_easy_init();
 
@@ -128,7 +130,7 @@ static int   module_start(const struct module *m) {
 
 
 /****************************** Stop ******************************/
-static void  module_stop (const struct module *m) {
+static void  module_stop (const struct music_module *m) {
 	struct config *const cfg = m->data;
 	pthread_mutex_lock(&cfg->mutex);
 	if (cfg->request) {
@@ -141,7 +143,7 @@ static void  module_stop (const struct module *m) {
 
 
 /****************************** Free ******************************/
-static void  module_free (struct module *m) {
+static void  module_free (struct music_module *m) {
 	struct config *const cfg = m->data;
 	pthread_mutex_destroy(&cfg->mutex);
 	free(cfg->username);
@@ -152,7 +154,7 @@ static void  module_free (struct module *m) {
 
 
 /****************************** Configuration ******************************/
-static int   module_conf (const struct module *m,
+static int   module_conf (const struct music_module *m,
                           const char *opt, const char *arg) {
 	static const struct music_option options[] = {
 		{ "url",      1, 1 },
@@ -217,7 +219,7 @@ static size_t addSong(char *data, size_t pos, size_t capacity,
                       const struct song *song) __attribute__((nonnull));
 
 struct request_data {
-	const struct module *m;
+	const struct music_module *m;
 	size_t *errorPositions;
 	size_t songPos, count, handled, errorPos;
 	char *data;
@@ -228,7 +230,7 @@ static void sendSongs(const char *data, size_t len, struct request_data *d)
 	__attribute__((nonnull));
 
 
-static size_t module_send (const struct module *m, size_t count,
+static size_t module_send (const struct music_module *m,
                            const struct song *const *songs,
                            size_t *errorPositions) {
 	struct config *const cfg = m->data;
@@ -243,7 +245,7 @@ static size_t module_send (const struct module *m, size_t count,
 	d.m = m;
 	d.errorPositions = errorPositions;
 
-	if (!count) return 0;
+	if (!*songs) return 0;
 
 	pthread_mutex_lock(&cfg->mutex);
 	if (!cfg->request) {
@@ -272,7 +274,7 @@ static size_t module_send (const struct module *m, size_t count,
 	curl_easy_setopt(cfg->request, CURLOPT_WRITEHEADER  , (void*)&d);
 
 	pos = start;
-	for (; d.songPos < count; ++d.songPos) {
+	for (; songs[d.songPos]; ++d.songPos) {
 		const struct song *const song = songs[d.songPos];
 		size_t add = d.count < 32 ? addSong(data, pos, capacity, song) : 0;
 
