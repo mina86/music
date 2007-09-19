@@ -1,6 +1,6 @@
 /*
  * SHA1 Implementation
- * $Id: sha1.c,v 1.1 2007/09/11 14:49:13 mina86 Exp $
+ * $Id: sha1.c,v 1.2 2007/09/19 13:55:27 mina86 Exp $
  * Copyright (c) 2007 by Michal Nazarewicz (mina86/AT/mina86.com)
  *
  * This program is free software; you can redistribute it and/or modify
@@ -78,6 +78,7 @@ char    *sha1_b64(char hash[29],
 #    define SHA1_BIG_ENDIAN 0
 #  endif
 #else
+/** Defined as 1 when we are sure we are on a big-endian machine. */
 #  define SHA1_BIG_ENDIAN 0
 #endif
 
@@ -85,17 +86,32 @@ char    *sha1_b64(char hash[29],
 #  define INT2BE(dest, val) (*((uint32_t*)(dest)) = (val))
 #  define BE2INT(dest) (*((uint32_t*)(dest)))
 #else
+/**
+ * Saves a 32-bit big-endian value.  Both arguments are evalated
+ * several times.
+ *
+ * @param dest location to save to.
+ * @param val value to save.
+ */
 #  define INT2BE(dest, val) do {				\
-		(dest)[0] = (val) >> 24;				\
-		(dest)[1] = (val) >> 16;				\
-		(dest)[2] = (val) >>  8;				\
-		(dest)[3] = (val)      ;				\
+		(dest)[0] = ((val) >> 24) & 0xff;		\
+		(dest)[1] = ((val) >> 16) & 0xff;		\
+		(dest)[2] = ((val) >>  8) & 0xff;		\
+		(dest)[3] = ((val)      ) & 0xff;		\
 	} while (0)
-#  define BE2INT(dest)							\
-	(((uint32_t)((dest)[0])) << 24) |			\
-	(((uint32_t)((dest)[1])) << 16) |			\
-	(((uint32_t)((dest)[2])) <<  8) |			\
-	(((uint32_t)((dest)[3]))      )
+
+/**
+ * Reads a 32-bit big-endian value.  Argument is evaluated several
+ * times.
+ *
+ * @param src source location to read integer from.
+ * @return a 32-bit value.
+ */
+#  define BE2INT(src)							\
+	((((uint32_t)(((src)[0]) & 0xff)) << 24) |	\
+	 (((uint32_t)(((src)[1]) & 0xff)) << 16) |	\
+	 (((uint32_t)(((src)[2]) & 0xff)) <<  8) |	\
+	 (((uint32_t)(((src)[3]) & 0xff))      ))
 #endif
 
 
@@ -115,14 +131,26 @@ uint8_t *sha1    (uint8_t hash[20],
 
 /******************** Otherwise our own implementation ********************/
 #else
-/***** Rotates left value by n bits (0<n<32) *****/
+/**
+ * Rotates value left given number of bits.
+ *
+ * @param value value to rotate.
+ * @param n number of bits to rotate (must be greater then 0 and lower
+ *          then 32).
+ * @return value rotatt n bits left.
+ */
 static __inline__ uint32_t rol(uint32_t value, unsigned n) {
 	return (value << n) | (value >> (32 - n));
 }
 
 
 
-/***** Handles single 512-bit long (64-byte long) block *****/
+/**
+ * Handles single 512-bit long (64-byte long) block.
+ *
+ * @param block 512-bit long block to handle.
+ * @param state SHA1 state.
+ */
 static void sha1_block(const uint8_t block[64], uint32_t state[5]) {
 	uint32_t w[16], a = state[0], b = state[1], c = state[2], d = state[3],
 		e = state[4];

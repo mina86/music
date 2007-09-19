@@ -1,6 +1,6 @@
 /*
  * SHA1 Implementation
- * $Id: sha1.h,v 1.1 2007/09/11 14:49:13 mina86 Exp $
+ * $Id: sha1.h,v 1.2 2007/09/19 13:55:27 mina86 Exp $
  * Copyright (c) 2007 by Michal Nazarewicz (mina86/AT/mina86.com)
  *
  * This program is free software; you can redistribute it and/or modify
@@ -24,10 +24,44 @@
 #include "config.h"
 #include <stdint.h>
 
+
+/**
+ * Calculates SHA1 of a given string.  Hash is saved in binary and
+ * consists of 20 (8-bit) bytes.
+ *
+ * @param hash location where to save hash.
+ * @param message message to calculate SHA1 of.
+ * @param message's length.
+ * @return location where hash was saved (ie. value of hash argument).
+ */
 uint8_t *sha1    (uint8_t hash[20],
                   const uint8_t *__restrict__ message, uint32_t len);
+
+
+/**
+ * Calculates SHA1 of a given string.  Hash is saved in hex
+ * representation and consists of 40 characters and a terminating NUL
+ * byte.
+ *
+ * @param hash location where to save hash.
+ * @param message message to calculate SHA1 of.
+ * @param message's length.
+ * @return location where hash was saved (ie. value of hash argument).
+ */
 char    *sha1_hex(char hash[41],
                   const uint8_t *__restrict__ message, uint32_t len);
+
+
+/**
+ * Calculates SHA1 of a given string.  Hash is saved in base64
+ * encodind and consists of 28 characters (the last one is an equal
+ * sign) and a terminating NUL byte.
+ *
+ * @param hash location where to save hash.
+ * @param message message to calculate SHA1 of.
+ * @param message's length.
+ * @return location where hash was saved (ie. value of hash argument).
+ */
 char    *sha1_b64(char hash[29],
                   const uint8_t *__restrict__ message, uint32_t len);
 

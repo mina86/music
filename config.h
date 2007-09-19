@@ -1,6 +1,6 @@
 /*
  * "Listening to" daemon configuration file
- * $Id: config.h,v 1.4 2007/09/11 14:43:57 mina86 Exp $
+ * $Id: config.h,v 1.5 2007/09/19 13:55:27 mina86 Exp $
  * Copyright (c) 2007 by Michal Nazarewicz (mina86/AT/mina86.com)
  *
  * This program is free software; you can redistribute it and/or modify
@@ -22,19 +22,21 @@
 #define MN_CONFIG_H
 
 
-#define HAVE_POLL 1
-#define HAVE_OPENSSL_H 0
-#define HAVE_ENDIAN_H 1
+#define HAVE_POLL      1  /**< Defined as 1 when we have a poll() function. */
+#define HAVE_OPENSSL_H 0  /**< Defined as 1 when we have OpenSSL. */
+#define HAVE_ENDIAN_H  1  /**< Defined as 1 when we have endian.h. */
 
 
 #ifndef __GNUC__
-# define __attribute__(x)
+#  ifndef __attribute__
+#    define __attribute__(x) /**< Defined for compilers different then GCC. */
+#  endif
 # if __STDC_VERSION__ + 0 >= 199901L
 #  define __inline__ inline
 #  define __restrict__ restrict
 # else
-#  define __inline__
-#  define __restrict__
+#  define __inline__    /**< Defined to inline if we have C99 compiler. */
+#  define __restrict__  /**< Defined to restrict if we have C99 compiler. */
 # endif
 #endif
 
