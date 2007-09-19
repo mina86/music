@@ -1,6 +1,6 @@
 /*
  * "Listening to" daemon library functions implementation
- * $Id: music-impl.c,v 1.2 2007/09/19 13:09:03 mina86 Exp $
+ * $Id: music-impl.c,v 1.3 2007/09/19 14:00:14 mina86 Exp $
  * Copyright (c) 2007 by Michal Nazarewicz (mina86/AT/mina86.com)
  *
  * This program is free software; you can redistribute it and/or modify
@@ -145,7 +145,8 @@ static void music_log_internal_do(FILE *stream, const char *date,
 
 
 
-int   music_config(const struct music_module *m, const struct music_option *options,
+int   music_config(const struct music_module *m,
+                   const struct music_option *options,
                    const char *opt, const char *arg, int req) {
 	const struct music_option *o = options;
 	while (o->opt && strcmp(o->opt, opt)) ++o;
@@ -268,7 +269,8 @@ int  music_run_once_check(void (*func)(void), void *arg) {
 
 
 
-void  music_song(const struct music_module *m, const struct music_song *song) {
+void  music_song(const struct music_module *m,
+                 const struct music_song *song) {
 	struct music_module *core = m->core;
 	struct config *cfg  = core->data;
 

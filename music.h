@@ -1,6 +1,6 @@
 /*
  * "Listening to" daemon header file
- * $Id: music.h,v 1.7 2007/09/19 02:32:57 mina86 Exp $
+ * $Id: music.h,v 1.8 2007/09/19 14:00:14 mina86 Exp $
  * Copyright (c) 2007 by Michal Nazarewicz (mina86/AT/mina86.com)
  *
  * This program is free software; you can redistribute it and/or modify
@@ -31,7 +31,7 @@
 /**
  * Structure representing a song.
  */
-struct song {
+struct music_song {
 	const char *title;   /**< Song's title. */
 	const char *artist;  /**< Song's performer. */
 	const char *album;   /**< Song's album. */
@@ -138,8 +138,10 @@ struct music_module {
 		 * Submitts songs.  Module must try to submit all songs and
 		 * return number of songs which it *failed* to submit.
 		 * Moreover, errorPositions array must be filled with indexes
-		 * of songs which failed to be submitted.  This method is
-		 * required for output modules.
+		 * of songs which failed to be submitted.  Or, if module
+		 * failed to submit all songs it may return -1 and leave
+		 * errorPositions intact.  This method is required for output
+		 * modules.
 		 *
 		 * Note that if module submits songs somewhere where they may
 		 * be rejected it is most likely irrelevant if such song was
@@ -151,11 +153,11 @@ struct music_module {
 		 * @param songs a NULL terminated array of pointers to songs.
 		 * @param errorPositions array to fill with indexes of songs
 		 *                       that module was unable to submit.
-		 * @return number of songs method failed to submitt.
+		 * @return number of songs method failed to submit or -1.
 		 */
-		size_t (*send)(const struct music_module *m,
-		               const struct song *const *songs,
-		               size_t *errorPositions);
+		int (*send)(const struct music_module *m,
+		            const struct music_song *const *songs,
+		            size_t *errorPositions);
 
 		/**
 		 * Stores song in cache for later resubmission.  Module must
@@ -168,7 +170,7 @@ struct music_module {
 		 * @param modules a NULL terminated array of pointers to
 		 *                output modules.
 		 */
-		void (*cache)(const struct music_module *m, const struct song *song,
+		void (*cache)(const struct music_module *m, const struct music_song *song,
 		              const struct music_module *const *modules);
 	} song;
 
@@ -192,7 +194,7 @@ struct music_module {
 	/* Those two are for internal use by core.  init() (or module in
 	   any other place) should not touch them. */
 #ifdef MUSIC_INTERNAL_H
-	struct music_module *next;  /**< Next module on list.  For internal use! */
+	struct music_module *next;  /**< Next module.  For internal use! */
 	struct music_module *core;  /**< The core module.  For internal use! */
 #else
 	/** Internal data for use by core.  Modules must not touch it! */
@@ -224,9 +226,9 @@ struct music_module {
  * executing when it is zero.
  */
 #ifdef MUSIC_INTERNAL_H
-extern volatile int music_running;
+extern volatile sig_atomic_t music_running;
 #else
-extern const volatile int music_running;
+extern const volatile sig_atomic_t music_running;
 #endif
 
 
@@ -312,7 +314,8 @@ void  music_log_errno(const struct music_module *m, unsigned level,
  * @return -1 on error, 0 if option was not found or option associated
  *         with an option.
  */
-int   music_config(const struct music_module *m, const struct music_option *options,
+int   music_config(const struct music_module *m,
+                   const struct music_option *options,
                    const char *opt, const char *arg, int req)
 	__attribute__((nonnull, visibility("default")));
 
@@ -325,7 +328,8 @@ int   music_config(const struct music_module *m, const struct music_option *opti
  * @param m input module that raports song.
  * @param song a song it raports.
  */
-void  music_song  (const struct music_module *m, const struct song *song)
+void  music_song  (const struct music_module *m,
+                   const struct music_song *song)
 	__attribute__((nonnull, visibility("default")));
 
 

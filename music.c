@@ -1,6 +1,6 @@
 /*
  * "Listening to" daemon
- * $Id: music.c,v 1.6 2007/09/19 02:32:57 mina86 Exp $
+ * $Id: music.c,v 1.7 2007/09/19 14:00:14 mina86 Exp $
  * Copyright (c) 2007 by Michal Nazarewicz (mina86/AT/mina86.com)
  *
  * This program is free software; you can redistribute it and/or modify
@@ -33,21 +33,69 @@
 
 
 
-
+/**
+ * A conf method for core module.  See music_module::conf.
+ *
+ * @param m core module.
+ * @param opt option keyword.
+ * @param arg argument.
+ * @return whether option was accepted.
+ */
 static int  config_line(const struct music_module *m,
                         const char *opt, const char *arg)
 	__attribute__((nonnull(1)));
+
+
+/**
+ * Parses signle configuration line.  It executes configuration's conf
+ * method (music_module::conf) or loads module if option was "module".
+ * It stores which module configuration it's reading now in *m_.  When
+ * executed for the first time (or when a new configuration file is
+ * being read ) m_ should be initialised to point to pointer to core
+ * module.
+ *
+ * @param buf line from configuration file.
+ * @param m_ pointer to module being configured now.
+ * @return zero on error, non-zero on success.
+ */
 static int  parse_line(char *buf, struct music_module **m_)
 	__attribute__((nonnull));
+
+
+/**
+ * Sorts modules according to it's type in the following order: core,
+ * cache, out, int.
+ *
+ * @param core core module.
+ * @return zero if one of the modules had invalid type, non-zero on success.
+ */
 static int  sort_modules(struct music_module *core) __attribute__((nonnull));
 
 
-volatile int music_running = 1;
+
+volatile sig_atomic_t music_running = 1;
 int sleep_pipe_fd;
 
 
-static int  sig = 0;
+
+/**
+ * Signal number application recieved or 0 if none.
+ */
+static volatile sig_atomic_t sig = 0;
+
+/**
+ * A callback function for signals which should terminate application.
+ * If sig is zero sets it to proper value otherwise calls abort.
+ *
+ * @param signum signal number.
+ */
 static void got_sig(int signum);
+
+/**
+ * A callback function for signals to ignore.  Does completly nothing.
+ *
+ * @param signum signal number.
+ */
 static void ignore_sig(int signum);
 
 
@@ -114,7 +162,7 @@ int main(int argc, char **argv) {
 		m = &core;
 		if (ch) *ch = 0;
 		while (fgets(buf, sizeof buf, fp)) {
-			int result = parse_line(buf, &m);
+			int result = !parse_line(buf, &m);
 			if (result) return result;
 		}
 
@@ -123,7 +171,7 @@ int main(int argc, char **argv) {
 		}
 	}
 
-	if (sort_modules(&core)) {
+	if (!sort_modules(&core)) {
 		return 1;
 	}
 
@@ -297,7 +345,7 @@ static int  parse_line(char *buf, struct music_module **m_) {
 	for (ch  = option ; *ch && !isspace(*ch ) && *ch!='#'; ++ch);
 	for (end = ch     ;         isspace(*ch )            ; ++ch);
 	*end = 0;
-	if (!*option) return 0;
+	if (!*option) return 1;
 	end = ch;
 	for (argument = ch; *ch                   && *ch!='#'; ++ch) {
 		if (!isspace(*ch)) end = ch + 1;
@@ -310,38 +358,38 @@ static int  parse_line(char *buf, struct music_module **m_) {
 	if (!strcmp(option, "name")) {
 		if (m==core) {
 			music_log(m, LOG_FATAL, "name: unknown option");
-			return 1;
+			return 0;
 		} else if (!*argument) {
 			music_log(m, LOG_FATAL, "name: argument expected");
-			return 1;
+			return 0;
 		}
 		m->name = realloc(m->name, len + 1);
 		memcpy(m->name, argument, len + 1);
-		return 0;
+		return 1;
 	}
 
 
 	/* Pass arguments to module */
 	if (strcmp(option, "module")) {
 		if (m->config) {
-			return !m->config(m, option, argument);
+			return m->config(m, option, argument);
 		} else {
 			music_log(m, LOG_FATAL, "%s: unknown option", option);
-			return 1;
+			return 0;
 		}
 	}
 
 
 	/* Configuration for current module has ended */
 	if (m->config && !m->config(m, 0, 0)) {
-		return 1;
+		return 0;
 	}
 
 
 	/* Module to load not specified */
 	if (!*argument) {
 		music_log(core, LOG_FATAL, "module: argument expected");
-		return 1;
+		return 0;
 	}
 
 
@@ -366,7 +414,7 @@ static int  parse_line(char *buf, struct music_module **m_) {
 	if (!handle) {
 		music_log(core, LOG_FATAL, "%s", dlerror());
 		free(moduleName);
-		return 1;
+		return 0;
 	}
 
 	/* Load "init" function */
@@ -374,7 +422,7 @@ static int  parse_line(char *buf, struct music_module **m_) {
 	if (!(handle = dlsym(handle, "init"))) {
 		music_log(core, LOG_FATAL, "%s", dlerror());
 		free(moduleName);
-		return 1;
+		return 0;
 	}
 
 	/* Run "init" function */
@@ -383,7 +431,7 @@ static int  parse_line(char *buf, struct music_module **m_) {
 	if (!m) {
 		music_log(core, LOG_FATAL, "%s: init: unknown error", buf);
 		free(moduleName);
-		return 1;
+		return 0;
 	}
 
 	/* Fill structure */
@@ -393,7 +441,7 @@ static int  parse_line(char *buf, struct music_module **m_) {
 	m->core = core;
 	core->next = m;
 	*m_ = m;
-	return 0;
+	return 1;
 }
 
 
@@ -412,7 +460,7 @@ static int  sort_modules(struct music_module *core) {
 
 		if (type>2) {
 			music_log(m, LOG_FATAL, "invalid module type: %d", (int)type);
-			return 1;
+			return 0;
 		}
 
 		m->next = buckets[type];
@@ -433,57 +481,7 @@ static int  sort_modules(struct music_module *core) {
 		}
 	}
 
-	return 0;
-}
-
-
-
-/****************************** Put song ******************************/
-void  music_song(const struct music_module *m, const struct song *song) {
-	struct music_module *core = m->core;
-	struct config *cfg  = core->data;
-
-	struct slist *el;
-	struct song *sng;
-
-	const char *error = 0;
-
-	if (!song->title) {
-		error = " (no title)";
-	} else if (song->length<30) {
-		error = " (song too short)";
-	}
-
-#define OR(x, y) ((x) ? (x) : (y))
-	music_log(m, error ? LOG_NOTICE : LOG_DEBUG,
-	          "%s song: %s <%s> %s [%u sec]%s", error ? "ignoring" : "got",
-	          OR(song->artist, "(null)"), OR(song->album , "(null)"),
-	          OR(song->title , "(null)"), song->length, OR(error, ""));
-#undef OR
-	if (error) return;
-
-	/* Copy song */
-#define DUP(x) ((x) ? music_strdup_realloc(0, (x)) : 0)
-	sng = malloc(sizeof *sng);
-	sng->title   = DUP(song->title);
-	sng->artist  = DUP(song->artist);
-	sng->album   = DUP(song->album);
-	sng->genre   = DUP(song->genre);
-	sng->time    = song->time;
-	sng->endTime = song->endTime;
-	sng->length  = song->length;
-#undef DUP
-
-	el = malloc(sizeof *el);
-	el->ptr = (void*)sng;
-
-	pthread_mutex_lock(&cfg->songs.mutex);
-	el->next = cfg->songs.first;
-	cfg->songs.first = el;
-	pthread_cond_signal(&cfg->songs.cond);
-	pthread_mutex_unlock(&cfg->songs.mutex);
-
-	return;
+	return 1;
 }
 
 
@@ -522,7 +520,7 @@ static int  config_line(const struct music_module *m,
 
 
 
-/****************************** Got Sig ******************************/
+/****************************** Signals ******************************/
 static void got_sig(int signum) {
 	music_running = 0;
 	if (!sig) {
