@@ -1,6 +1,6 @@
 /*
  * "Listening to" daemon library functions implementation
- * $Id: music-impl.c,v 1.1 2007/09/19 02:32:57 mina86 Exp $
+ * $Id: music-impl.c,v 1.2 2007/09/19 13:09:03 mina86 Exp $
  * Copyright (c) 2007 by Michal Nazarewicz (mina86/AT/mina86.com)
  *
  * This program is free software; you can redistribute it and/or modify
@@ -264,4 +264,53 @@ int  music_run_once_check(void (*func)(void), void *arg) {
 	el->arg  = arg ;
 	first = el;
 	return 1;
+}
+
+
+
+void  music_song(const struct music_module *m, const struct music_song *song) {
+	struct music_module *core = m->core;
+	struct config *cfg  = core->data;
+
+	struct slist *el;
+	struct music_song *sng;
+
+	const char *error = 0;
+
+	if (!song->title) {
+		error = " (no title)";
+	} else if (song->length<30) {
+		error = " (song too short)";
+	}
+
+#define OR(x, y) ((x) ? (x) : (y))
+	music_log(m, error ? LOG_NOTICE : LOG_DEBUG,
+	          "%s song: %s <%s> %s [%u sec]%s", error ? "ignoring" : "got",
+	          OR(song->artist, "(null)"), OR(song->album , "(null)"),
+	          OR(song->title , "(null)"), song->length, OR(error, ""));
+#undef OR
+	if (error) return;
+
+	/* Copy song */
+#define DUP(x) ((x) ? music_strdup_realloc(0, (x)) : 0)
+	sng = malloc(sizeof *sng);
+	sng->title   = DUP(song->title);
+	sng->artist  = DUP(song->artist);
+	sng->album   = DUP(song->album);
+	sng->genre   = DUP(song->genre);
+	sng->time    = song->time;
+	sng->endTime = song->endTime;
+	sng->length  = song->length;
+#undef DUP
+
+	el = malloc(sizeof *el);
+	el->ptr = (void*)sng;
+
+	pthread_mutex_lock(&cfg->songs.mutex);
+	el->next = cfg->songs.first;
+	cfg->songs.first = el;
+	pthread_cond_signal(&cfg->songs.cond);
+	pthread_mutex_unlock(&cfg->songs.mutex);
+
+	return;
 }
