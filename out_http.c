@@ -1,6 +1,6 @@
 /*
  * "Listening to" daemon MPD input module
- * $Id: out_http.c,v 1.3 2007/09/19 13:56:11 mina86 Exp $
+ * $Id: out_http.c,v 1.4 2007/09/19 14:06:10 mina86 Exp $
  * Copyright (c) 2007 by Michal Nazarewicz (mina86/AT/mina86.com)
  *
  * This program is free software; you can redistribute it and/or modify
@@ -188,7 +188,6 @@ struct music_module *init(const char *name, const char *arg) {
 	m->config      = module_conf;
 	m->song.send   = module_send;
 	m->retryCached = 0;
-	m->name        = 0;
 	cfg = m->data  = m + 1;
 
 	pthread_mutex_init(&cfg->mutex, 0);
@@ -247,7 +246,6 @@ static void  module_free (struct music_module *m) {
 	pthread_mutex_destroy(&cfg->mutex);
 	free(cfg->username);
 	free(cfg->url);
-	music_module_free(m);
 }
 
 
@@ -359,7 +357,7 @@ static void sendSongs(const char *data, size_t len, struct request_data *d)
 
 
 
-static size_t module_send (const struct music_module *m,
+static int    module_send (const struct music_module *m,
                            const struct music_song *const *songs,
                            size_t *errorPositions) {
 	struct module_config *const cfg = m->data;
@@ -618,7 +616,7 @@ static size_t got_body  (const char *str, size_t size, size_t n, void *arg) {
  * @param ch character to chec.
  * @return 1 if charactr needs to be escaped, 0 otherwise.
  */
-static __inline__ escape_char(unsigned char ch) {
+static __inline__ int escape_char(unsigned char ch) {
 	return ch < 0x30 || (ch > 0x39 && ch < 0x41) || ch > 0x7f;
 }
 
