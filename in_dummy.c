@@ -1,6 +1,6 @@
 /*
  * "Listening to" daemon dummy input module
- * $Id: in_dummy.c,v 1.8 2007/09/19 13:56:11 mina86 Exp $
+ * $Id: in_dummy.c,v 1.9 2007/09/19 14:29:27 mina86 Exp $
  * Copyright (c) 2007 by Michal Nazarewicz (mina86/AT/mina86.com)
  *
  * This program is free software; you can redistribute it and/or modify
@@ -115,7 +115,7 @@ static void *module_run  (void *ptr) {
 		0,
 		60
 	};
-	while (music_running && music_sleep(ptr, 10000)) {
+	while (music_running && music_sleep(ptr, 10000)==1) {
 		song.endTime = time(&song.time) + 30;
 		song.time -= 30;
 		music_song(ptr, &song);

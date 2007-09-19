@@ -1,6 +1,6 @@
 /*
  * "Listening to" daemon header file
- * $Id: music.h,v 1.8 2007/09/19 14:00:14 mina86 Exp $
+ * $Id: music.h,v 1.9 2007/09/19 14:29:27 mina86 Exp $
  * Copyright (c) 2007 by Michal Nazarewicz (mina86/AT/mina86.com)
  *
  * This program is free software; you can redistribute it and/or modify
@@ -367,7 +367,7 @@ char *music_strdup_realloc(char *old, const char *str)
  *
  * @param m module that wants to sleep.
  * @param mili number of miliseconds it wants to sleep.
- * @return -1 on error, 1 when core begins terminating, 0 otherwise.
+ * @return -1 on error, 0 when core begins terminating, 1 otherwise.
  */
 int music_sleep(const struct music_module *m, unsigned long mili)
 	__attribute__((nonnull, visibility("default")));

@@ -1,6 +1,6 @@
 /*
  * "Listening to" daemon library functions implementation
- * $Id: music-impl.c,v 1.3 2007/09/19 14:00:14 mina86 Exp $
+ * $Id: music-impl.c,v 1.4 2007/09/19 14:29:27 mina86 Exp $
  * Copyright (c) 2007 by Michal Nazarewicz (mina86/AT/mina86.com)
  *
  * This program is free software; you can redistribute it and/or modify
@@ -231,7 +231,7 @@ int music_sleep(const struct music_module *m, unsigned long mili) {
 	ret = select(sleep_pipe_fd + 1, &set, 0, 0, &timeout);
 #endif
 
-	if (ret==-1) {
+	if (ret<0) {
 #ifdef HAVE_POLL
 		music_log_errno(m, LOG_WARNING, "poll");
 #else

@@ -1,6 +1,6 @@
 /*
  * "Listening to" daemon MPD input module
- * $Id: in_mpd.c,v 1.8 2007/09/19 13:56:11 mina86 Exp $
+ * $Id: in_mpd.c,v 1.9 2007/09/19 14:29:27 mina86 Exp $
  * Copyright (c) 2007 by Michal Nazarewicz (mina86/AT/mina86.com)
  *
  * This program is free software; you can redistribute it and/or modify
@@ -272,7 +272,7 @@ static void module_do_songs(const struct music_module *m,
 	int id = -1, count = 0;
 	time_t start;
 
-	while (music_sleep(m, 1000)!=1) {
+	while (music_sleep(m, 1000)==1) {
 		mpd_Status *status;
 		int state, i, elapsed;
 
