@@ -1,6 +1,6 @@
 /*
  * "Listening to" daemon MPD input module
- * $Id: out_http.c,v 1.2 2007/09/19 02:30:13 mina86 Exp $
+ * $Id: out_http.c,v 1.3 2007/09/19 13:56:11 mina86 Exp $
  * Copyright (c) 2007 by Michal Nazarewicz (mina86/AT/mina86.com)
  *
  * This program is free software; you can redistribute it and/or modify
@@ -32,49 +32,151 @@
 #include <curl/curl.h>
 
 
-static int    module_start(const struct music_module *m)
+/**
+ * Starts module.  See music_module::start.
+ *
+ * @param m out_http module to start.
+ * @return whether starting succeed.
+ */
+static int   module_start(const struct music_module *m)
 	__attribute__((nonnull));
-static void   module_stop (const struct music_module *m)
+
+
+/**
+ * Stops module.  See music_module::stop.
+ *
+ * @param m out_http module to stop.
+ */
+static void  module_stop (const struct music_module *m)
 	__attribute__((nonnull));
-static void   module_free (struct music_module *m) __attribute__((nonnull));
-static int    module_conf (const struct music_module *m, const char *opt,
-                           const char *arg)
-	__attribute__((nonnull(1)));
-static size_t module_send (const struct music_module *m,
-                           const struct song *const *songs,
-                           size_t *errorPositions)
+
+
+/**
+ * Frees memory allocated by module.  See music_module::free.
+ *
+ * @param m out_http module to free.
+ */
+static void  module_free (struct music_module *m) __attribute__((nonnull));
+
+
+/**
+ * Accepts configuration options.  See music_module::conf.
+ *
+ * @param m out_http module.
+ * @param opt option keyword.
+ * @param arg argument.
+ * @return whether option was accepted.
+ */
+static int   module_conf (const struct music_module *m, const char *opt,
+                          const char *arg)
 	__attribute__((nonnull(1)));
 
 
-/* escape & escapeLength does not count or add teminating NUL byte */
+/**
+ * Submits songs.  See music_module::song::submit.
+ *
+ * @param out_http module.
+ * @param songs NULL terminated list of songs to submit.
+ * @param errorPositions output array with positions of errors that
+ *                       failed to be submitted.
+ * @return number of songs that function waild to submit or -1 which
+ *          means all songs failed to be submitted.
+ */
+static int   module_send (const struct music_module *m,
+                          const struct music_song *const *songs,
+                          size_t *errorPositions)
+	__attribute__((nonnull(1)));
+
+
+
+/**
+ * Escapes given string.  It replaces characters which may cause
+ * problems into a per cent sign followed by two hexadecimal digits
+ * which represents byte's value.  This method <strong>dose
+ * not</strong> terminate escaped string with a NUL byte.
+ *
+ * It will write at moset n bytes and return length of escaped string
+ * so if result is greater then n not whole encoded string fitted into
+ * destination and user may not relay on the fact that first n chars
+ * are valid
+ *
+ * @param dest destination where to save escaped string.
+ * @param src  string to escape.
+ * @param n    size of dest array.
+ * @return length of escaped string.
+ */
 static size_t escape(char *dest, const char *src, size_t n)
 	__attribute__((nonnull));
+
+
+/**
+ * Calculates length of escaped string.  This method does not count
+ * NUL byte.
+ *
+ * @param src  string to calculate lengthescape.
+ * @return length of escaped string.
+ */
 static size_t escapeLength(const char *src)
 	__attribute__((nonnull));
 
 
+
+/**
+ * Callback function for libcurl.  Called when library retieved a HTTP
+ * header.
+ *
+ * @param str array.
+ * @param size size of single element.
+ * @param n number of elements.
+ * @param arg callback argument.
+ * @return number of bytes function took care of (size*n on success).
+ */
 static size_t got_header(const char *str, size_t size, size_t n, void *arg)
 	__attribute__((nonnull));
+
+
+/**
+ * Callback function for libcurl.  Called when library retieved
+ * a respons body.
+ *
+ * @param str array.
+ * @param size size of single element.
+ * @param n number of elements.
+ * @param arg callback argument.
+ * @return number of bytes function took care of (size*n on success).
+ */
 static size_t got_body  (const char *str, size_t size, size_t n, void *arg)
 	__attribute__((nonnull));
 
 
 
-struct config {
-	pthread_mutex_t mutex;
-	CURL *request;
-	char *url;
-	char *username;
-	char password[20];
-	char gotPassword;
-	char padding[3];
+
+/**
+ * Module's configuration.
+ */
+struct module_config {
+	pthread_mutex_t mutex;  /**< Mutex used when aborting request. */
+	CURL *request;          /**< CURL object for handling HTTP requests. */
+	char *url;              /**< Request's URL. */
+	char *username;         /**< User name. */
+	char password[20];      /**< SHA1 of password. */
+	int gotPassword;        /**> Whether password was given in
+                                 configuration file. */
 };
 
+
+/**
+ * Module's User Agent string as sent when doing HTTP request.  This
+ * is a "music-out_http/x.y libcurl/a.b.c" where x.y is module's
+ * version and a.b.c is libcurl's version.  This is initalised once by
+ * init().
+ */
 static char userAgent[64] = "";
 
 
+
 struct music_module *init(const char *name, const char *arg) {
-	struct config *cfg;
+	struct module_config *cfg;
 	struct music_module *const m = malloc(sizeof *m + sizeof *cfg);
 	(void)name; /* supress warning */
 	(void)arg;  /* supress warning */
@@ -111,9 +213,8 @@ struct music_module *init(const char *name, const char *arg) {
 
 
 
-/****************************** Start ******************************/
 static int   module_start(const struct music_module *m) {
-	struct config *const cfg = m->data;
+	struct module_config *const cfg = m->data;
 	CURL *const request = cfg->request = curl_easy_init();
 
 	if (!request) {
@@ -129,9 +230,8 @@ static int   module_start(const struct music_module *m) {
 
 
 
-/****************************** Stop ******************************/
 static void  module_stop (const struct music_module *m) {
-	struct config *const cfg = m->data;
+	struct module_config *const cfg = m->data;
 	pthread_mutex_lock(&cfg->mutex);
 	if (cfg->request) {
 		curl_easy_cleanup(cfg->request);
@@ -142,9 +242,8 @@ static void  module_stop (const struct music_module *m) {
 
 
 
-/****************************** Free ******************************/
 static void  module_free (struct music_module *m) {
-	struct config *const cfg = m->data;
+	struct module_config *const cfg = m->data;
 	pthread_mutex_destroy(&cfg->mutex);
 	free(cfg->username);
 	free(cfg->url);
@@ -153,7 +252,6 @@ static void  module_free (struct music_module *m) {
 
 
 
-/****************************** Configuration ******************************/
 static int   module_conf (const struct music_module *m,
                           const char *opt, const char *arg) {
 	static const struct music_option options[] = {
@@ -162,7 +260,7 @@ static int   module_conf (const struct music_module *m,
 		{ "password", 1, 3 },
 		{ 0, 0, 0 }
 	};
-	struct config *const cfg = m->data;
+	struct module_config *const cfg = m->data;
 
 	/* Check configuration */
 	if (!opt) {
@@ -214,26 +312,57 @@ static int   module_conf (const struct music_module *m,
 
 
 
-/****************************** Send ******************************/
+/**
+ * Adds song to POST data.  Returns number of characters it consumed
+ * or zero if there were not enough room.  If pos is non-zero also an
+ * ampersand will be added at the beginning.
+ *
+ * @param data POST data string.
+ * @param pos position to put song POST data.
+ * @param capacity capacity of data array.
+ * @param song song to add.
+ * @return number of characters string consumed or zero if there was
+ *         not enough room.
+ */
 static size_t addSong(char *data, size_t pos, size_t capacity,
-                      const struct song *song) __attribute__((nonnull));
+                      const struct music_song *song) __attribute__((nonnull));
 
+
+
+/**
+ * Request data or state.
+ */
 struct request_data {
-	const struct music_module *m;
-	size_t *errorPositions;
-	size_t songPos, count, handled, errorPos;
-	char *data;
-	size_t data_len;
+	const struct music_module *m;  /**< out_http module. */
+	size_t *errorPositions;        /**< Array to save error positions. */
+	size_t songPos;                /**< Position of current song. */
+	size_t count;                  /**< Number of songs in request. */
+	size_t handled;                /**< Number of songs handled by request. */
+	size_t errorPos;               /**< Number of songs that failed so far. */
+	char *data;      /**< Temporary storage used when got_body()
+	                      recieves part of respons which does not end
+	                      with a full line. */
+	size_t data_len; /**< Length of data. */
 };
 
+
+
+/**
+ * Submits songs.
+ *
+ * @param data POST data.
+ * @param len length of POST data.
+ * @param d request state.
+ */
 static void sendSongs(const char *data, size_t len, struct request_data *d)
 	__attribute__((nonnull));
 
 
+
 static size_t module_send (const struct music_module *m,
-                           const struct song *const *songs,
+                           const struct music_song *const *songs,
                            size_t *errorPositions) {
-	struct config *const cfg = m->data;
+	struct module_config *const cfg = m->data;
 	struct request_data d = {
 		0, 0,
 		0, 0, 0, 0,
@@ -275,7 +404,7 @@ static size_t module_send (const struct music_module *m,
 
 	pos = start;
 	for (; songs[d.songPos]; ++d.songPos) {
-		const struct song *const song = songs[d.songPos];
+		const struct music_song *const song = songs[d.songPos];
 		size_t add = d.count < 32 ? addSong(data, pos, capacity, song) : 0;
 
 		if (!add && d.count) {
@@ -321,7 +450,7 @@ static size_t module_send (const struct music_module *m,
 
 
 static size_t addSong(char *data, size_t pos, size_t capacity,
-                      const struct song *song) {
+                      const struct music_song *song) {
 	const size_t orgPos = pos;
 
 	if (capacity - pos < 13) {
@@ -369,7 +498,7 @@ static size_t addSong(char *data, size_t pos, size_t capacity,
 
 
 static void sendSongs(const char *data, size_t len, struct request_data *d) {
-	CURL *const request = ((struct config*)d->m->data)->request;
+	CURL *const request = ((struct module_config*)d->m->data)->request;
 	d->songPos -= d->count;
 	d->handled = 0;
 	curl_easy_setopt(request, CURLOPT_POSTFIELDS   , data);
@@ -384,6 +513,24 @@ static void sendSongs(const char *data, size_t len, struct request_data *d) {
 
 
 /****************************** Handle request ******************************/
+/**
+ * Handles single line from reply.
+ *
+ * This function starts parsing of data starting from position pointed
+ * by pos.  Also, if whole line was parsed position of next line is
+ * stored in location pointed by pos.  This way calling function can
+ * check if there are any other lines to parse (ie. when location
+ * pointed by pos stores other value then size) and if it is a whole
+ * line (ie. when there are still characters but function returns 0).
+ *
+ * @param body whether it is body of respons (or still headers).
+ * @param str  data string.
+ * @param size number of characters in response.
+ * @param d    request state.
+ * @param pos  starting position of line and here is written starting
+ *             position of next line.
+ * @return whether line was sucessfully parsed.
+ */
 static int handle_reply_line(int body, const char *str, size_t size,
                              struct request_data *d, size_t *pos) {
 	const char *ch = str, *end = str + size;
@@ -465,8 +612,15 @@ static size_t got_body  (const char *str, size_t size, size_t n, void *arg) {
 
 
 /****************************** Escape ******************************/
-#define ESCAPE_CHAR_U(ch) ((ch)<0x30 || ((ch)>0x39 && (ch)<0x41) || (ch)>0x7f)
-#define ESCAPE_CHAR(ch) ESCAPE_CHAR_U((unsigned)(ch))
+/**
+ * Tells whether character needs to be escaped.
+ *
+ * @param ch character to chec.
+ * @return 1 if charactr needs to be escaped, 0 otherwise.
+ */
+static __inline__ escape_char(unsigned char ch) {
+	return ch < 0x30 || (ch > 0x39 && ch < 0x41) || ch > 0x7f;
+}
 
 
 static size_t escape(char *dest, const char *src, size_t n) {
@@ -475,7 +629,7 @@ static size_t escape(char *dest, const char *src, size_t n) {
 	size_t pos = 0;
 	for (; *src; ++src) {
 		const unsigned char ch = (unsigned char)*src;
-		if (ESCAPE_CHAR(ch)) {
+		if (escape_char(ch)) {
 			if (pos+2<n) {
 				dest[pos++] = '%';
 				dest[pos++] = xdigits[ch >> 4];
@@ -497,7 +651,7 @@ static size_t escape(char *dest, const char *src, size_t n) {
 static size_t escapeLength(const char *src) {
 	size_t count = 0;
 	for (; *src; ++src) {
-		count += (ESCAPE_CHAR(*src) << 1) | 1;
+		count += (escape_char(*src) << 1) | 1;
 	}
 	return count;
 }

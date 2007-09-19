@@ -1,6 +1,6 @@
 /*
  * "Listening to" daemon dummy input module
- * $Id: in_dummy.c,v 1.7 2007/09/19 02:29:50 mina86 Exp $
+ * $Id: in_dummy.c,v 1.8 2007/09/19 13:56:11 mina86 Exp $
  * Copyright (c) 2007 by Michal Nazarewicz (mina86/AT/mina86.com)
  *
  * This program is free software; you can redistribute it and/or modify
@@ -26,19 +26,47 @@
 #include "music.h"
 
 
+/**
+ * Starts module.  See music_module::start.
+ *
+ * @param m in_mpd module to start.
+ * @return whether starting succeed.
+ */
 static int   module_start(const struct music_module *m)
 	__attribute__((nonnull));
+
+
+/**
+ * Stops module.  See music_module::stop.
+ *
+ * @param m in_mpd module to stop.
+ */
 static void  module_stop (const struct music_module *m)
 	__attribute__((nonnull));
+
+
+/**
+ * Module's thread function.
+ *
+ * @param ptr a pointer to const struct music_module cast to pointer
+ *            to void.
+ * @return return value shall be ignored.
+ */
 static void *module_run  (void *ptr)        __attribute__((nonnull));
 
-struct config {
+
+
+/**
+ * Module's configuration.
+ */
+struct module_config {
 	pthread_t thread;
 };
 
 
+
 struct music_module *init(const char *name, const char *arg) {
-	struct config *cfg;
+	struct module_config *cfg;
 	struct music_module *const m = malloc(sizeof *m + sizeof *cfg);
 	(void)name; /* supress warning */
 	(void)arg;  /* supress warning */
@@ -46,11 +74,10 @@ struct music_module *init(const char *name, const char *arg) {
 	m->type        = MUSIC_IN;
 	m->start       = module_start;
 	m->stop        = module_stop;
-	m->free        = music_module_free;
+	m->free        = 0;
 	m->config      = 0;
 	m->song.send   = 0;
 	m->retryCached = 0;
-	m->name        = 0;
 	cfg = m->data  = m + 1;
 
 	cfg->thread = 0;
@@ -59,8 +86,9 @@ struct music_module *init(const char *name, const char *arg) {
 }
 
 
+
 static int  module_start(const struct music_module *m) {
-	struct config *const cfg = m->data;
+	struct module_config *const cfg = m->data;
 	if (pthread_create(&cfg->thread, 0, module_run, (void*)m)) {
 		music_log_errno(m, LOG_FATAL, "pthread_create");
 		return 0;
@@ -69,14 +97,16 @@ static int  module_start(const struct music_module *m) {
 }
 
 
+
 static void module_stop (const struct music_module *m) {
-	struct config *const cfg = m->data;
+	struct module_config *const cfg = m->data;
 	pthread_join(cfg->thread, 0);
 }
 
 
+
 static void *module_run  (void *ptr) {
-	static struct song song = {
+	static struct music_song song = {
 		"Title",
 		"Artist",
 		"Album",
@@ -87,6 +117,7 @@ static void *module_run  (void *ptr) {
 	};
 	while (music_running && music_sleep(ptr, 10000)) {
 		song.endTime = time(&song.time) + 30;
+		song.time -= 30;
 		music_song(ptr, &song);
 	}
 	return 0;

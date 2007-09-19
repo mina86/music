@@ -1,6 +1,6 @@
 /*
  * "Listening to" daemon MPD input module
- * $Id: in_mpd.c,v 1.7 2007/09/19 02:29:50 mina86 Exp $
+ * $Id: in_mpd.c,v 1.8 2007/09/19 13:56:11 mina86 Exp $
  * Copyright (c) 2007 by Michal Nazarewicz (mina86/AT/mina86.com)
  *
  * This program is free software; you can redistribute it and/or modify
@@ -29,27 +29,71 @@
 
 
 
+/**
+ * Starts module.  See music_module::start.
+ *
+ * @param m in_mpd module to start.
+ * @return whether starting succeed.
+ */
 static int   module_start(const struct music_module *m)
 	__attribute__((nonnull));
+
+
+/**
+ * Stops module.  See music_module::stop.
+ *
+ * @param m in_mpd module to stop.
+ */
 static void  module_stop (const struct music_module *m)
 	__attribute__((nonnull));
+
+
+/**
+ * Frees memory allocated by module.  See music_module::free.
+ *
+ * @param m in_mpd module to free.
+ */
 static void  module_free (struct music_module *m) __attribute__((nonnull));
+
+
+/**
+ * Accepts configuration options.  See music_module::conf.
+ *
+ * @param m in_mpd module.
+ * @param opt option keyword.
+ * @param arg argument.
+ * @return whether option was accepted.
+ */
 static int   module_conf (const struct music_module *m, const char *opt,
                           const char *arg)
 	__attribute__((nonnull(1)));
+
+
+/**
+ * Module's thread function.
+ *
+ * @param ptr a pointer to const struct music_module cast to pointer
+ *            to void.
+ * @return return value shall be ignored.
+ */
 static void *module_run  (void *ptr)        __attribute__((nonnull));
 
 
-struct config {
-	pthread_t thread;
-	char *host, *password;
-	long port;
+
+/**
+ * Module's configuration.
+ */
+struct module_config {
+	pthread_t thread;      /**< Thread's ID module is running. */
+	char *host;            /**< Host to connect to. */
+	char *password;        /**< Password to use when connecting. */
+	long port;             /**< Port to connect to. */
 };
 
 
 
 struct music_module *init(const char *name, const char *arg) {
-	struct config *cfg;
+	struct module_config *cfg;
 	struct music_module *const m = malloc(sizeof *m + sizeof *cfg);
 	(void)name; /* supress warning */
 	(void)arg;  /* supress warning */
@@ -61,7 +105,6 @@ struct music_module *init(const char *name, const char *arg) {
 	m->config      = module_conf;
 	m->song.send   = 0;
 	m->retryCached = 0;
-	m->name        = 0;
 	cfg = m->data  = m + 1;
 
 	cfg->thread = 0;
@@ -74,9 +117,9 @@ struct music_module *init(const char *name, const char *arg) {
 }
 
 
-/****************************** Start ******************************/
+
 static int   module_start(const struct music_module *m) {
-	struct config *const cfg = m->data;
+	struct module_config *const cfg = m->data;
 	if (pthread_create(&cfg->thread, 0, module_run, (void*)m)) {
 		music_log_errno(m, LOG_FATAL, "pthread_create");
 		return 0;
@@ -86,25 +129,24 @@ static int   module_start(const struct music_module *m) {
 
 
 
-/****************************** Stop ******************************/
+
 static void  module_stop (const struct music_module *m) {
-	struct config *cfg = m->data;
+	struct module_config *cfg = m->data;
 	pthread_join(cfg->thread, 0);
 }
 
 
 
-/****************************** Free ******************************/
+
 static void  module_free (struct music_module *m) {
-	struct config *const cfg = m->data;
+	struct module_config *const cfg = m->data;
 	free(cfg->host);
 	free(cfg->password);
-	music_module_free(m);
 }
 
 
 
-/****************************** Configuration ******************************/
+
 static int   module_conf (const struct music_module *m,
                           const char *opt, const char *arg) {
 	static const struct music_option options[] = {
@@ -113,7 +155,7 @@ static int   module_conf (const struct music_module *m,
 		{ "password", 1, 3 },
 		{ 0, 0, 0 }
 	};
-	struct config *const cfg = m->data;
+	struct module_config *const cfg = m->data;
 	if (!opt) return 1;
 
 	switch (music_config(m, options, opt, arg, 1)) {
@@ -135,19 +177,52 @@ static int   module_conf (const struct music_module *m,
 
 
 
-/****************************** Run ******************************/
-static mpd_Connection *module_do_connect(struct music_module *m)
+
+/**
+ * Connects to MPD.  This function runs in a loop which finishes
+ * either when it menages to connect to MPD or when music_running is
+ * set to zero (which means that application is terminating).
+ *
+ * @param m in_mpd module.
+ * @return connection to MPD or NULL on error.
+ */
+static mpd_Connection *module_do_connect(const struct music_module *m)
 	__attribute__((nonnull));
-static void module_do_songs(struct music_module *m, mpd_Connection *conn)
-	__attribute__((nonnull));
-static int  module_do_submit_song(struct music_module *m,
+
+
+/**
+ * Retrives song MPD is playing and submitts it if needed.  This
+ * function runs in a loop which finishes either when there is
+ * a connection error or when music_running is set to zero (which
+ * means taht application is terminating).
+ *
+ * @param m in_mpd module.
+ * @param conn connection to MPD.
+ */
+
+static void module_do_songs(const struct music_module *m,
+                             mpd_Connection *conn) __attribute__((nonnull));
+
+
+/**
+ * Retrives song MPD is playing and submits it to core using
+ * music_song() function.
+ *
+ * @param m in_mpd module.
+ * @param conn connection to MPD.
+ * @param start when the song has started playing.
+ * @param songid song's ID to retrive.
+ * @return zero on error, non-zero on success.
+ */
+static int  module_do_submit_song(const struct music_module *m,
                                   mpd_Connection *conn,
-                                  int start) __attribute__((nonnull));
+                                  time_t start, int songid)
+	__attribute__((nonnull));
 
 
 
 static void *module_run  (void *ptr) {
-	struct music_module *const m = ptr;
+	const struct music_module *const m = ptr;
 
 	do {
 		mpd_Connection *conn = module_do_connect(m);
@@ -165,8 +240,8 @@ static void *module_run  (void *ptr) {
 
 
 
-static mpd_Connection *module_do_connect(struct music_module *m) {
-	struct config *const cfg = m->data;
+static mpd_Connection *module_do_connect(const struct music_module *m) {
+	struct module_config *const cfg = m->data;
 	unsigned delay = 5000;
 
 	do {
@@ -192,19 +267,20 @@ static mpd_Connection *module_do_connect(struct music_module *m) {
 
 
 
-static void module_do_songs(struct music_module *m, mpd_Connection *conn) {
-	int id = -1, count = 0, start;
+static void module_do_songs(const struct music_module *m,
+                            mpd_Connection *conn) {
+	int id = -1, count = 0;
+	time_t start;
 
-	while (music_running) {
+	while (music_sleep(m, 1000)!=1) {
 		mpd_Status *status;
-		int state, i;
-
-		sleep(1);
+		int state, i, elapsed;
 
 		mpd_sendStatusCommand(conn);  if (conn->error) return;
 		status = mpd_getStatus(conn); if (conn->error) return;
 		state = status->state;
 		i = status->songid;
+		elapsed = status->elapsedTime;
 		mpd_freeStatus(status);
 		mpd_nextListOkCommand(conn);  if (conn->error) return;
 
@@ -213,33 +289,36 @@ static void module_do_songs(struct music_module *m, mpd_Connection *conn) {
 		if (i!=id) {
 			id = i;
 			count = 1;
-			start = time(0);
+			start = time(0) - elapsed;
 		} else if (count!=30 && ++count==30) {
-			if (!module_do_submit_song(m, conn, start)) return;
+			if (!module_do_submit_song(m, conn, start, id)) return;
 		}
 	}
 }
 
 
 
-static int  module_do_submit_song(struct music_module *m,
-                                  mpd_Connection *conn, int start) {
+static int  module_do_submit_song(const struct music_module *m,
+                                  mpd_Connection *conn,
+                                  time_t start, int songid) {
 	mpd_InfoEntity *info;
-	struct song song;
+	struct music_song song;
 
-	mpd_sendCurrentSongCommand(conn);      if (conn->error) return 0;
-	info = mpd_getNextInfoEntity(conn);    if (!info) return 0;
+	/*	mpd_sendCurrentSongCommand(conn);      if (conn->error) return 0; */
+	mpd_sendPlaylistIdCommand(conn, songid); if (conn->error) return 0;
+	info = mpd_getNextInfoEntity(conn);      if (!info) return 0;
 	if (info->type!=MPD_INFO_ENTITY_TYPE_SONG) {
 		mpd_freeInfoEntity(info);
 		return 0;
 	}
 
-	song.title  = info->info.song->title;
-	song.artist = info->info.song->artist;
-	song.album  = info->info.song->album;
-	song.genre  = info->info.song->genre;
-	song.length = info->info.song->time < 1 ? 1 : info->info.song->time;
-	song.time   = start;
+	song.title   = info->info.song->title;
+	song.artist  = info->info.song->artist;
+	song.album   = info->info.song->album;
+	song.genre   = info->info.song->genre;
+	song.length  = info->info.song->time < 1 ? 1 : info->info.song->time;
+	song.time    = start;
+	song.endTime = song.length > 1 ? start + (time_t)song.length : -1;
 
 	music_song(m, &song);
 
