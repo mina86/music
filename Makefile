@@ -1,4 +1,4 @@
-all: music in_dummy.so in_mpd.so
+all: music in_dummy.so in_mpd.so out_http.so
 
 clean:
 	rm -f -- *.o *.so music sha1
