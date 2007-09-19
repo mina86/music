@@ -1,6 +1,6 @@
 /*
  * "Listening to" daemon MPD input module
- * $Id: in_mpd.c,v 1.6 2007/09/19 00:10:32 mina86 Exp $
+ * $Id: in_mpd.c,v 1.7 2007/09/19 02:29:50 mina86 Exp $
  * Copyright (c) 2007 by Michal Nazarewicz (mina86/AT/mina86.com)
  *
  * This program is free software; you can redistribute it and/or modify
@@ -29,10 +29,12 @@
 
 
 
-static int   module_start(const struct module *m) __attribute__((nonnull));
-static void  module_stop (const struct module *m) __attribute__((nonnull));
-static void  module_free (struct module *m) __attribute__((nonnull));
-static int   module_conf (const struct module *m, const char *opt,
+static int   module_start(const struct music_module *m)
+	__attribute__((nonnull));
+static void  module_stop (const struct music_module *m)
+	__attribute__((nonnull));
+static void  module_free (struct music_module *m) __attribute__((nonnull));
+static int   module_conf (const struct music_module *m, const char *opt,
                           const char *arg)
 	__attribute__((nonnull(1)));
 static void *module_run  (void *ptr)        __attribute__((nonnull));
@@ -46,9 +48,9 @@ struct config {
 
 
 
-struct module *init(const char *name, const char *arg) {
+struct music_module *init(const char *name, const char *arg) {
 	struct config *cfg;
-	struct module *const m = malloc(sizeof *m + sizeof *cfg);
+	struct music_module *const m = malloc(sizeof *m + sizeof *cfg);
 	(void)name; /* supress warning */
 	(void)arg;  /* supress warning */
 
@@ -73,7 +75,7 @@ struct module *init(const char *name, const char *arg) {
 
 
 /****************************** Start ******************************/
-static int   module_start(const struct module *m) {
+static int   module_start(const struct music_module *m) {
 	struct config *const cfg = m->data;
 	if (pthread_create(&cfg->thread, 0, module_run, (void*)m)) {
 		music_log_errno(m, LOG_FATAL, "pthread_create");
@@ -85,7 +87,7 @@ static int   module_start(const struct module *m) {
 
 
 /****************************** Stop ******************************/
-static void  module_stop (const struct module *m) {
+static void  module_stop (const struct music_module *m) {
 	struct config *cfg = m->data;
 	pthread_join(cfg->thread, 0);
 }
@@ -93,7 +95,7 @@ static void  module_stop (const struct module *m) {
 
 
 /****************************** Free ******************************/
-static void  module_free (struct module *m) {
+static void  module_free (struct music_module *m) {
 	struct config *const cfg = m->data;
 	free(cfg->host);
 	free(cfg->password);
@@ -103,7 +105,7 @@ static void  module_free (struct module *m) {
 
 
 /****************************** Configuration ******************************/
-static int   module_conf (const struct module *m,
+static int   module_conf (const struct music_module *m,
                           const char *opt, const char *arg) {
 	static const struct music_option options[] = {
 		{ "host",     1, 1 },
@@ -134,17 +136,18 @@ static int   module_conf (const struct module *m,
 
 
 /****************************** Run ******************************/
-static mpd_Connection *module_do_connect(struct module *m)
+static mpd_Connection *module_do_connect(struct music_module *m)
 	__attribute__((nonnull));
-static void module_do_songs(struct module *m, mpd_Connection *conn)
+static void module_do_songs(struct music_module *m, mpd_Connection *conn)
 	__attribute__((nonnull));
-static int  module_do_submit_song(struct module *m, mpd_Connection *conn,
+static int  module_do_submit_song(struct music_module *m,
+                                  mpd_Connection *conn,
                                   int start) __attribute__((nonnull));
 
 
 
 static void *module_run  (void *ptr) {
-	struct module *const m = ptr;
+	struct music_module *const m = ptr;
 
 	do {
 		mpd_Connection *conn = module_do_connect(m);
@@ -162,7 +165,7 @@ static void *module_run  (void *ptr) {
 
 
 
-static mpd_Connection *module_do_connect(struct module *m) {
+static mpd_Connection *module_do_connect(struct music_module *m) {
 	struct config *const cfg = m->data;
 	unsigned delay = 5000;
 
@@ -189,7 +192,7 @@ static mpd_Connection *module_do_connect(struct module *m) {
 
 
 
-static void module_do_songs(struct module *m, mpd_Connection *conn) {
+static void module_do_songs(struct music_module *m, mpd_Connection *conn) {
 	int id = -1, count = 0, start;
 
 	while (music_running) {
@@ -219,8 +222,8 @@ static void module_do_songs(struct module *m, mpd_Connection *conn) {
 
 
 
-static int  module_do_submit_song(struct module *m, mpd_Connection *conn,
-                                  int start) {
+static int  module_do_submit_song(struct music_module *m,
+                                  mpd_Connection *conn, int start) {
 	mpd_InfoEntity *info;
 	struct song song;
 

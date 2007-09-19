@@ -1,6 +1,6 @@
 /*
  * "Listening to" daemon dummy input module
- * $Id: in_dummy.c,v 1.6 2007/09/19 00:10:32 mina86 Exp $
+ * $Id: in_dummy.c,v 1.7 2007/09/19 02:29:50 mina86 Exp $
  * Copyright (c) 2007 by Michal Nazarewicz (mina86/AT/mina86.com)
  *
  * This program is free software; you can redistribute it and/or modify
@@ -26,8 +26,10 @@
 #include "music.h"
 
 
-static int   module_start(const struct module *m) __attribute__((nonnull));
-static void  module_stop (const struct module *m) __attribute__((nonnull));
+static int   module_start(const struct music_module *m)
+	__attribute__((nonnull));
+static void  module_stop (const struct music_module *m)
+	__attribute__((nonnull));
 static void *module_run  (void *ptr)        __attribute__((nonnull));
 
 struct config {
@@ -35,9 +37,9 @@ struct config {
 };
 
 
-struct module *init(const char *name, const char *arg) {
+struct music_module *init(const char *name, const char *arg) {
 	struct config *cfg;
-	struct module *const m = malloc(sizeof *m + sizeof *cfg);
+	struct music_module *const m = malloc(sizeof *m + sizeof *cfg);
 	(void)name; /* supress warning */
 	(void)arg;  /* supress warning */
 
@@ -57,7 +59,7 @@ struct module *init(const char *name, const char *arg) {
 }
 
 
-static int  module_start(const struct module *m) {
+static int  module_start(const struct music_module *m) {
 	struct config *const cfg = m->data;
 	if (pthread_create(&cfg->thread, 0, module_run, (void*)m)) {
 		music_log_errno(m, LOG_FATAL, "pthread_create");
@@ -67,7 +69,7 @@ static int  module_start(const struct module *m) {
 }
 
 
-static void module_stop (const struct module *m) {
+static void module_stop (const struct music_module *m) {
 	struct config *const cfg = m->data;
 	pthread_join(cfg->thread, 0);
 }
