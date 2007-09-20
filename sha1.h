@@ -1,6 +1,6 @@
 /*
  * SHA1 Implementation
- * $Id: sha1.h,v 1.2 2007/09/19 13:55:27 mina86 Exp $
+ * $Id: sha1.h,v 1.3 2007/09/20 03:37:22 mina86 Exp $
  * Copyright (c) 2007 by Michal Nazarewicz (mina86/AT/mina86.com)
  *
  * This program is free software; you can redistribute it and/or modify
@@ -22,7 +22,6 @@
 #define MINA_SHA1_H
 
 #include "config.h"
-#include <stdint.h>
 
 
 /**

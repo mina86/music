@@ -1,6 +1,6 @@
 /*
  * "Listening to" daemon configuration file
- * $Id: config.h,v 1.5 2007/09/19 13:55:27 mina86 Exp $
+ * $Id: config.h,v 1.6 2007/09/20 03:37:22 mina86 Exp $
  * Copyright (c) 2007 by Michal Nazarewicz (mina86/AT/mina86.com)
  *
  * This program is free software; you can redistribute it and/or modify
@@ -20,6 +20,8 @@
 
 #ifndef MN_CONFIG_H
 #define MN_CONFIG_H
+
+#include <stdint.h>
 
 
 #define HAVE_POLL      1  /**< Defined as 1 when we have a poll() function. */
