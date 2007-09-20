@@ -1,6 +1,6 @@
 /*
  * "Listening to" daemon library functions implementation
- * $Id: music-impl.c,v 1.4 2007/09/19 14:29:27 mina86 Exp $
+ * $Id: music-impl.c,v 1.5 2007/09/20 03:21:11 mina86 Exp $
  * Copyright (c) 2007 by Michal Nazarewicz (mina86/AT/mina86.com)
  *
  * This program is free software; you can redistribute it and/or modify
@@ -293,26 +293,10 @@ void  music_song(const struct music_module *m,
 #undef OR
 	if (error) return;
 
-	/* Copy song */
-#define DUP(x) ((x) ? music_strdup_realloc(0, (x)) : 0)
-	sng = malloc(sizeof *sng);
-	sng->title   = DUP(song->title);
-	sng->artist  = DUP(song->artist);
-	sng->album   = DUP(song->album);
-	sng->genre   = DUP(song->genre);
-	sng->time    = song->time;
-	sng->endTime = song->endTime;
-	sng->length  = song->length;
-#undef DUP
-
-	el = malloc(sizeof *el);
-	el->ptr = (void*)sng;
-
-	pthread_mutex_lock(&cfg->songs.mutex);
-	el->next = cfg->songs.first;
-	cfg->songs.first = el;
-	pthread_cond_signal(&cfg->songs.cond);
-	pthread_mutex_unlock(&cfg->songs.mutex);
+	/* song dispatcher is either core->next or core->next->next */
+	m = core->next;
+	if (m->type==MUSIC_CACHE) m = m->next;
+	m->song.send(m, &song, 0);
 
 	return;
 }
