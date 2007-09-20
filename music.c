@@ -1,6 +1,6 @@
 /*
  * "Listening to" daemon
- * $Id: music.c,v 1.7 2007/09/19 14:00:14 mina86 Exp $
+ * $Id: music.c,v 1.8 2007/09/20 03:21:56 mina86 Exp $
  * Copyright (c) 2007 by Michal Nazarewicz (mina86/AT/mina86.com)
  *
  * This program is free software; you can redistribute it and/or modify
@@ -104,12 +104,6 @@ static void ignore_sig(int signum);
 int main(int argc, char **argv) {
 	struct config cfg = {
 		PTHREAD_MUTEX_INITIALIZER,
-		{
-			0,
-			PTHREAD_MUTEX_INITIALIZER,
-			PTHREAD_COND_INITIALIZER,
-			0
-		},
 		0, LOG_NOTICE, 0,
 		0
 	};
@@ -449,16 +443,20 @@ static int  parse_line(char *buf, struct music_module **m_) {
 /****************************** Sort modules ******************************/
 static int  sort_modules(struct music_module *core) {
 	struct music_module *buckets[3] = { 0, 0, 0 }, *last[3] = { 0, 0, 0 }, *m;
-	unsigned i;
+	struct music_module *dispatcher = 0, *next;
 
 	/* Split into buckets */
 	m = core->next;
-	while (m) {
+	for (m = core->next; m; m = next) {
+		const int type = m->type;
+		next = m->next;
 
-		struct music_module *next = m->next;
-		unsigned type = (unsigned)m->type;
+		if (type==-1 && !dispatcher) {
+			dispatcher = m;
+			continue;
+		}
 
-		if (type>2) {
+		if ((unsigned)type>2) {
 			music_log(m, LOG_FATAL, "invalid module type: %d", (int)type);
 			return 0;
 		}
@@ -474,12 +472,22 @@ static int  sort_modules(struct music_module *core) {
 
 	/* Connect buckets */
 	m = core;
-	for (i = 3; i; ) {
-		if (buckets[--i]) {
-			m->next = buckets[i];
-			m = last[i];
-		}
+	if (buckets[MUSIC_CACHE]) {  /* first cache */
+		m->next = buckets[MUSIC_CACHE];
+		m = last[MUSIC_CACHE];
 	}
+	if (dispatcher) { /* then dispatcher */
+		m = m->next = dispatcher;
+	}
+	if (buckets[MUSIC_OUT]) {  /* then out */
+		m->next = buckets[MUSIC_OUT];
+		m = last[MUSIC_OUT];
+	}
+	if (buckets[MUSIC_IN]) {  /* and in at the end */
+		m->next = buckets[MUSIC_IN];
+		m = last[MUSIC_IN];
+	}
+	m->next = 0;
 
 	return 1;
 }
