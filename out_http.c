@@ -1,6 +1,6 @@
 /*
  * "Listening to" daemon MPD input module
- * $Id: out_http.c,v 1.4 2007/09/19 14:06:10 mina86 Exp $
+ * $Id: out_http.c,v 1.5 2007/09/20 03:22:24 mina86 Exp $
  * Copyright (c) 2007 by Michal Nazarewicz (mina86/AT/mina86.com)
  *
  * This program is free software; you can redistribute it and/or modify
@@ -85,7 +85,7 @@ static int   module_conf (const struct music_module *m, const char *opt,
 static int   module_send (const struct music_module *m,
                           const struct music_song *const *songs,
                           size_t *errorPositions)
-	__attribute__((nonnull(1)));
+	__attribute__((nonnull(1, 2)));
 
 
 
@@ -181,7 +181,7 @@ struct music_module *init(const char *name, const char *arg) {
 	(void)name; /* supress warning */
 	(void)arg;  /* supress warning */
 
-	m->type        = MUSIC_IN;
+	m->type        = MUSIC_OUT;
 	m->start       = module_start;
 	m->stop        = module_stop;
 	m->free        = module_free;
@@ -439,8 +439,12 @@ static int    module_send (const struct music_module *m,
 	pthread_mutex_unlock(&cfg->mutex);
 
 	/* Mark rest as invalid */
-	while (d.songPos < d.count) {
-		errorPositions[d.errorPos++] = d.songPos++;
+	if (errorPositions) {
+		while (d.songPos < d.count) {
+			errorPositions[d.errorPos++] = d.songPos++;
+		}
+	} else {
+		d.errorPos += d.count - d.songPos;
 	}
 	return d.errorPos;
 }
@@ -503,8 +507,14 @@ static void sendSongs(const char *data, size_t len, struct request_data *d) {
 	curl_easy_setopt(request, CURLOPT_POSTFIELDSIZE, (long)len);
 	curl_easy_perform(request);
 	d->songPos += d->handled;
-	for (d->count -= d->handled; d->count; --d->count) {
-		d->errorPositions[d->errorPos++] = d->songPos++;
+	if (d->errorPositions) {
+		for (d->count -= d->handled; d->count; --d->count) {
+			d->errorPositions[d->errorPos++] = d->songPos++;
+		}
+	} else {
+		d->count    -= d->handled;
+		d->songPos  += d->count;
+		d->errorPos += d->count;
 	}
 }
 
