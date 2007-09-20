@@ -1,6 +1,6 @@
 /*
  * "Listening to" daemon header file
- * $Id: music.h,v 1.10 2007/09/20 03:18:58 mina86 Exp $
+ * $Id: music.h,v 1.11 2007/09/20 03:38:05 mina86 Exp $
  * Copyright (c) 2007 by Michal Nazarewicz (mina86/AT/mina86.com)
  *
  * This program is free software; you can redistribute it and/or modify
@@ -165,6 +165,9 @@ struct music_module {
 		 * store it and associate it with names of given modules.
 		 * This way, songs may be later resubmitted if given module'll
 		 * become operational again.
+		 *
+		 * \internal This is also method used by song dispatcher
+		 * however it ignores modules argument.
 		 *
 		 * @param m cache module.
 		 * @param song song to save.
