@@ -1,6 +1,6 @@
 /*
  * "Listening to" daemon library functions implementation
- * $Id: music-impl.c,v 1.5 2007/09/20 03:21:11 mina86 Exp $
+ * $Id: music-impl.c,v 1.6 2007/09/20 03:38:30 mina86 Exp $
  * Copyright (c) 2007 by Michal Nazarewicz (mina86/AT/mina86.com)
  *
  * This program is free software; you can redistribute it and/or modify
@@ -296,7 +296,7 @@ void  music_song(const struct music_module *m,
 	/* song dispatcher is either core->next or core->next->next */
 	m = core->next;
 	if (m->type==MUSIC_CACHE) m = m->next;
-	m->song.send(m, &song, 0);
+	m->song.cache(m, song, 0);
 
 	return;
 }
