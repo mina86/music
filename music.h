@@ -1,6 +1,6 @@
 /*
  * "Listening to" daemon header file
- * $Id: music.h,v 1.9 2007/09/19 14:29:27 mina86 Exp $
+ * $Id: music.h,v 1.10 2007/09/20 03:18:58 mina86 Exp $
  * Copyright (c) 2007 by Michal Nazarewicz (mina86/AT/mina86.com)
  *
  * This program is free software; you can redistribute it and/or modify
@@ -137,11 +137,11 @@ struct music_module {
 		/**
 		 * Submitts songs.  Module must try to submit all songs and
 		 * return number of songs which it *failed* to submit.
-		 * Moreover, errorPositions array must be filled with indexes
-		 * of songs which failed to be submitted.  Or, if module
-		 * failed to submit all songs it may return -1 and leave
-		 * errorPositions intact.  This method is required for output
-		 * modules.
+		 * Moreover, errorPositions array must be filled (unless it is
+		 * NULL) with indexes of songs which failed to be submitted.
+		 * Or, if module failed to submit all songs it may return -1
+		 * and leave errorPositions intact.  This method is required
+		 * for output modules.
 		 *
 		 * Note that if module submits songs somewhere where they may
 		 * be rejected it is most likely irrelevant if such song was
@@ -152,7 +152,8 @@ struct music_module {
 		 * @param m output module.
 		 * @param songs a NULL terminated array of pointers to songs.
 		 * @param errorPositions array to fill with indexes of songs
-		 *                       that module was unable to submit.
+		 *                       that module was unable to submit or
+		 *                       NULL.
 		 * @return number of songs method failed to submit or -1.
 		 */
 		int (*send)(const struct music_module *m,
@@ -170,7 +171,8 @@ struct music_module {
 		 * @param modules a NULL terminated array of pointers to
 		 *                output modules.
 		 */
-		void (*cache)(const struct music_module *m, const struct music_song *song,
+		void (*cache)(const struct music_module *m,
+		              const struct music_song *song,
 		              const struct music_module *const *modules);
 	} song;
 
