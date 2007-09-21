@@ -1,6 +1,6 @@
 /*
  * "Listening to" daemon library functions implementation
- * $Id: music-impl.c,v 1.6 2007/09/20 03:38:30 mina86 Exp $
+ * $Id: music-impl.c,v 1.7 2007/09/21 22:15:12 mina86 Exp $
  * Copyright (c) 2007 by Michal Nazarewicz (mina86/AT/mina86.com)
  *
  * This program is free software; you can redistribute it and/or modify
@@ -272,11 +272,6 @@ int  music_run_once_check(void (*func)(void), void *arg) {
 void  music_song(const struct music_module *m,
                  const struct music_song *song) {
 	struct music_module *core = m->core;
-	struct config *cfg  = core->data;
-
-	struct slist *el;
-	struct music_song *sng;
-
 	const char *error = 0;
 
 	if (!song->title) {
