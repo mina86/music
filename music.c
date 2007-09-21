@@ -1,6 +1,6 @@
 /*
  * "Listening to" daemon
- * $Id: music.c,v 1.8 2007/09/20 03:21:56 mina86 Exp $
+ * $Id: music.c,v 1.9 2007/09/21 22:15:02 mina86 Exp $
  * Copyright (c) 2007 by Michal Nazarewicz (mina86/AT/mina86.com)
  *
  * This program is free software; you can redistribute it and/or modify
@@ -164,6 +164,17 @@ int main(int argc, char **argv) {
 			fclose(fp);
 		}
 	}
+
+	struct music_module *dispatcher_init();
+	m = dispatcher_init();
+	if (!m) {
+		music_log(&core, LOG_FATAL, "Error initialising song dispatcher");
+		return 1;
+	}
+	m->name = music_strdup_realloc(0, "dispatcher");
+	m->next = core.next;
+	m->core = &core;
+	core.next = m;
 
 	if (!sort_modules(&core)) {
 		return 1;
@@ -451,7 +462,7 @@ static int  sort_modules(struct music_module *core) {
 		const int type = m->type;
 		next = m->next;
 
-		if (type==-1 && !dispatcher) {
+		if (type==MUSIC_CORE && !dispatcher) {
 			dispatcher = m;
 			continue;
 		}

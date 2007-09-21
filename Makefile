@@ -5,7 +5,7 @@ clean:
 
 
 
-music: music.o music-impl.o #dispatcher.o
+music: music.o music-impl.o dispatcher.o
 	$(CC) $(CFLAGS) $(CPPFLAGS) ${LDFLAGS} -rdynamic -o $@ $^ -ldl -lpthread
 
 music.o: music.c music.h music-int.h config.h
