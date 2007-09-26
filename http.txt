@@ -1,0 +1,97 @@
+1 Arguments
+
+  Arguments are specified as POST arguments.  All integers are in
+  hexadecimal!
+
+  1.1 Authentication
+
+    auth=pass:<user-name>:<current-time>:<pass>
+    auth=pass:<user-name>:<current-time>:<pass>:<session-id>
+    auth=open:<user-name>:<current-time>:<pass>
+    auth=open:<user-name>:<current-time>:<pass>:<session-id>
+
+      Authenticate using user name and password.  If ":<session-id>"
+      is given as last argument it is a hint to server to invalidate
+      that session ID (server may ignore that hint).  "open"
+      authentication creates a new session.
+
+      <pass> is BASE64(SHA1(SHA1(<password>) + <current-time>)) with
+      optionally equal sing stripped from the end.
+
+    auth=session:<session-id>
+    auth=close:<session-id>
+
+      Authenticate using session ID.  In former invalidate session ID.
+
+      <session-id> is at most 32-hexadecimal character long string
+      returned by server.
+
+  1.2 Songs
+
+    song[]=<title>:<artist>:<album>:<genre>:<length>:<finish-time>
+    now=<title>:<artist>:<album>:<genre>:<length>:<finish-time>
+
+      Each value must have ":" replaced with "%3A" (or "%3a").  If any
+      value is not known it must be empty.  "song[]" argument may be
+      repeated several times for each song.
+
+2 Replies
+
+  Server will reply with a "200 OK" status and respons content type
+  will be "text/x-music" and it's first line will be:
+
+    "MUSIC" <code> <message>
+
+  2.1 100 OK
+
+    Request was accepted and performed.
+
+    If client requested a session ID or authenticated using a session
+    ID and did not request session to close the next line will be:
+
+      "SESSION" <session-id> <session-duration>
+
+    If client submitted songs there will be:
+
+      "SONG" <number> <status> <message>
+
+    line repeated for each song where <number> will go from 0 to n-1
+    where n is number of submitted songs or "-1" for "now" song.
+    Lines are sorted from 0 to n-1.
+
+    <status> is "OK" which means that song was accepted and added to
+    database, "REJECTED" which means that song was rejected or
+    "FAILED" meaning that there was an error when serwe tried to add
+    this song.  Client may retry to send the song only if it "FAILED"
+    to be added.
+
+  2.2 201 Invalid User
+
+    User name or password was invalid and client is not authenticated.
+    Client should not retry without user's interaction.  The next line
+    of content will contain a short message describing the error.
+
+  2.4 202 Banned
+
+    Either client or IP address it is connecting from is banned.
+    Client should not retry without user's interaction.  The next line
+    of content will contain a short message describing the error.
+
+  2.3 203 Invalid Time
+
+    Time specified in auth argument was not accepted by the server
+    (too much in the past or in the future).  Clien must not retry
+    without fixing the problem with clock.
+
+  2.4 301 Bad Session
+
+    Session client used is invalid (ie. it have expired).  Client may
+    log in again using a username and password.  The next line of
+    content will contain a short message describing the error.
+
+
+3 Notes
+
+  Server will use <current-time> to determine how long client's time
+  differs from server's time which then can be used to determine
+  <finish-time>.
