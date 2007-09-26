@@ -1,6 +1,6 @@
 /*
  * "Listening to" daemon internal header file
- * $Id: music-int.h,v 1.2 2007/09/20 03:21:28 mina86 Exp $
+ * $Id: music-int.h,v 1.3 2007/09/26 17:59:47 mina86 Exp $
  * Copyright (c) 2007 by Michal Nazarewicz (mina86/AT/mina86.com)
  *
  * This program is free software; you can redistribute it and/or modify
@@ -22,7 +22,6 @@
 #define MUSIC_INTERNAL_H
 
 
-#define MUSIC_NOT_MODULE
 #include "music.h"
 
 
