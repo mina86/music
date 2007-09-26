@@ -1,6 +1,6 @@
 /*
  * "Listening to" daemon MPD input module
- * $Id: out_http.c,v 1.6 2007/09/21 22:20:53 mina86 Exp $
+ * $Id: out_http.c,v 1.7 2007/09/26 18:03:57 mina86 Exp $
  * Copyright (c) 2007 by Michal Nazarewicz (mina86/AT/mina86.com)
  *
  * This program is free software; you can redistribute it and/or modify
@@ -38,7 +38,7 @@
  * @param m out_http module to start.
  * @return whether starting succeed.
  */
-static int   module_start(const struct music_module *m)
+static int   module_start(const struct music_module *restrict m)
 	__attribute__((nonnull));
 
 
@@ -47,7 +47,7 @@ static int   module_start(const struct music_module *m)
  *
  * @param m out_http module to stop.
  */
-static void  module_stop (const struct music_module *m)
+static void  module_stop (const struct music_module *restrict m)
 	__attribute__((nonnull));
 
 
@@ -56,7 +56,8 @@ static void  module_stop (const struct music_module *m)
  *
  * @param m out_http module to free.
  */
-static void  module_free (struct music_module *m) __attribute__((nonnull));
+static void  module_free (struct music_module *restrict m)
+	__attribute__((nonnull));
 
 
 /**
@@ -67,8 +68,9 @@ static void  module_free (struct music_module *m) __attribute__((nonnull));
  * @param arg argument.
  * @return whether option was accepted.
  */
-static int   module_conf (const struct music_module *m, const char *opt,
-                          const char *arg)
+static int   module_conf (const struct music_module *restrict m,
+                          const char *restrict opt,
+                          const char *restrict arg)
 	__attribute__((nonnull(1)));
 
 
@@ -82,9 +84,9 @@ static int   module_conf (const struct music_module *m, const char *opt,
  * @return number of songs that function waild to submit or -1 which
  *          means all songs failed to be submitted.
  */
-static int   module_send (const struct music_module *m,
-                          const struct music_song *const *songs,
-                          size_t *errorPositions)
+static int   module_send (const struct music_module *restrict m,
+                          const struct music_song *restrict const *restrict songs,
+                          size_t *restrict errorPositions)
 	__attribute__((nonnull(1, 2)));
 
 
@@ -105,7 +107,7 @@ static int   module_send (const struct music_module *m,
  * @param n    size of dest array.
  * @return length of escaped string.
  */
-static size_t escape(char *dest, const char *src, size_t n)
+static size_t escape(char *restrict dest, const char *restrict src, size_t n)
 	__attribute__((nonnull));
 
 
@@ -116,7 +118,7 @@ static size_t escape(char *dest, const char *src, size_t n)
  * @param src  string to calculate lengthescape.
  * @return length of escaped string.
  */
-static size_t escapeLength(const char *src)
+static size_t escapeLength(const char *restrict src)
 	__attribute__((nonnull));
 
 
@@ -131,7 +133,8 @@ static size_t escapeLength(const char *src)
  * @param arg callback argument.
  * @return number of bytes function took care of (size*n on success).
  */
-static size_t got_header(const char *str, size_t size, size_t n, void *arg)
+static size_t got_header(const char *restrict str, size_t size, size_t n,
+                         void *restrict arg)
 	__attribute__((nonnull));
 
 
@@ -145,8 +148,25 @@ static size_t got_header(const char *str, size_t size, size_t n, void *arg)
  * @param arg callback argument.
  * @return number of bytes function took care of (size*n on success).
  */
-static size_t got_body  (const char *str, size_t size, size_t n, void *arg)
+static size_t got_body  (const char *restrict str, size_t size, size_t n,
+                         void *restrict arg)
 	__attribute__((nonnull));
+
+
+/**
+ * Callback function for libcurl.  Called when library sends some
+ * debug information.
+ *
+ * @param request CURL easy interface handler.
+ * @param type message type.
+ * @param data message (not zero terminated).
+ * @param length message's length.
+ * @param arg out_http module.
+ * @return 0.
+ */
+static int    got_debug (CURL *restrict request, curl_infotype type,
+                         const char *restrict data, size_t length,
+                         void *restrict arg);
 
 
 
@@ -177,9 +197,15 @@ struct module_config {
  */
 static char userAgent[64] = "";
 
+/**
+ * Headers sent while making request.
+ */
+struct curl_slist headers = { (char*)"Accept: text/x-music", 0 };
 
 
-struct music_module *init(const char *name, const char *arg) {
+
+struct music_module *init(const char *restrict name,
+                          const char *restrict arg) {
 	struct module_config *cfg;
 	struct music_module *const m = malloc(sizeof *m + sizeof *cfg);
 	(void)name; /* supress warning */
@@ -216,7 +242,7 @@ struct music_module *init(const char *name, const char *arg) {
 
 
 
-static int   module_start(const struct music_module *m) {
+static int   module_start(const struct music_module *restrict m) {
 	struct module_config *const cfg = m->data;
 	CURL *const request = cfg->request = curl_easy_init();
 
@@ -227,15 +253,18 @@ static int   module_start(const struct music_module *m) {
 	curl_easy_setopt(request, CURLOPT_USERAGENT     , userAgent);
 	curl_easy_setopt(request, CURLOPT_WRITEFUNCTION , got_body);
 	curl_easy_setopt(request, CURLOPT_HEADERFUNCTION, got_header);
+	curl_easy_setopt(request, CURLOPT_DEBUGFUNCTION , got_debug);
+	curl_easy_setopt(request, CURLOPT_DEBUGDATA     , (void*)m);
 	curl_easy_setopt(request, CURLOPT_URL           , cfg->url);
 	curl_easy_setopt(request, CURLOPT_VERBOSE       , (long)cfg->verbose);
 	curl_easy_setopt(request, CURLOPT_STDERR        , (void*)stderr);
+	curl_easy_setopt(request, CURLOPT_HTTPHEADER    , (void*)&headers);
 	return 1;
 }
 
 
 
-static void  module_stop (const struct music_module *m) {
+static void  module_stop (const struct music_module *restrict m) {
 	struct module_config *const cfg = m->data;
 	pthread_mutex_lock(&cfg->mutex);
 	if (cfg->request) {
@@ -247,7 +276,7 @@ static void  module_stop (const struct music_module *m) {
 
 
 
-static void  module_free (struct music_module *m) {
+static void  module_free (struct music_module *restrict m) {
 	struct module_config *const cfg = m->data;
 	pthread_mutex_destroy(&cfg->mutex);
 	free(cfg->username);
@@ -256,8 +285,9 @@ static void  module_free (struct music_module *m) {
 
 
 
-static int   module_conf (const struct music_module *m,
-                          const char *opt, const char *arg) {
+static int   module_conf (const struct music_module *restrict m,
+                          const char *restrict opt,
+                          const char *restrict arg) {
 	static const struct music_option options[] = {
 		{ "url",      1, 1 },
 		{ "username", 1, 2 },
@@ -333,8 +363,9 @@ static int   module_conf (const struct music_module *m,
  * @return number of characters string consumed or zero if there was
  *         not enough room.
  */
-static size_t addSong(char *data, size_t pos, size_t capacity,
-                      const struct music_song *song) __attribute__((nonnull));
+static size_t addSong(char *restrict data, size_t pos, size_t capacity,
+                      const struct music_song *restrict song)
+	__attribute__((nonnull));
 
 
 
@@ -344,7 +375,7 @@ static size_t addSong(char *data, size_t pos, size_t capacity,
 struct request_data {
 	const struct music_module *m;  /**< out_http module. */
 
-	const struct music_song *const *songs;  /**< Pointer to song array. */
+	const struct music_song *restrict const *songs;  /**< Pointer to song array. */
 	size_t songPos;                /**< Position of current song. */
 	size_t count;                  /**< Number of songs in request. */
 	size_t handled;                /**< Number of songs handled by request. */
@@ -361,6 +392,7 @@ struct request_data {
 		ST_IGNORE = -1,  /**< The rest of the response is to be ignored. */
 		ST_START,        /**< We're starting reading the response --
 		                      expecting "HTTP/1.x 200" header. */
+		ST_HD_TYPE,      /**< Waiting for Content-Type header. */
 		ST_HEADERS,      /**< We got HTTP status and reading headers. */
 		ST_BODY_START,   /**< We're starting reading body -- epxecting
 		                      "MUSIC <code>". */
@@ -395,14 +427,15 @@ struct request_data {
  * @param d request state.
  * @return whether further submissions can be issued.
  */
-static int  sendSongs(const char *data, size_t len, struct request_data *d)
+static int  sendSongs(const char *restrict data, size_t len,
+                      struct request_data *restrict d)
 	__attribute__((nonnull));
 
 
 
-static int    module_send (const struct music_module *m,
-                           const struct music_song *const *songs,
-                           size_t *errorPositions) {
+static int    module_send (const struct music_module *restrict m,
+                           const struct music_song *restrict const *restrict songs,
+                           size_t *restrict errorPositions) {
 	struct module_config *const cfg = m->data;
 	struct request_data d = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 	size_t start = 0, pos, capacity;
@@ -426,12 +459,14 @@ static int    module_send (const struct music_module *m,
 	/* Authentication */
 	if (cfg->username) {
 		time_t t = time(0);
+		size_t l;
 		start = sprintf(data, "auth=pass:%s:%lx:", cfg->username,
 		                (unsigned long)t);
 		memcpy((uint8_t*)data+start+30, cfg->password, 20);
-		sha1_b64(data + start, (uint8_t*)data + start + 30,
-		         20 + sprintf(data + start + 50, "%lx", (unsigned long)t));
-		start += 28;
+		l = 20 + sprintf(data + start + 50, "%lx", (unsigned long)t);
+
+		sha1_b64(data + start, (uint8_t*)data + start + 30, l);
+		start += 27;
 	}
 
 
@@ -489,8 +524,8 @@ static int    module_send (const struct music_module *m,
 
 
 
-static size_t addSong(char *data, size_t pos, size_t capacity,
-                      const struct music_song *song) {
+static size_t addSong(char *restrict data, size_t pos, size_t capacity,
+                      const struct music_song *restrict song) {
 	const size_t orgPos = pos;
 
 	if (capacity - pos < 13) {
@@ -537,7 +572,8 @@ static size_t addSong(char *data, size_t pos, size_t capacity,
 }
 
 
-static int  sendSongs(const char *data, size_t len, struct request_data *d) {
+static int  sendSongs(const char *restrict data, size_t len,
+                      struct request_data *restrict d) {
 	struct module_config *const cfg = d->m->data;
 	CURL *const request = cfg->request;
 
@@ -549,7 +585,7 @@ static int  sendSongs(const char *data, size_t len, struct request_data *d) {
 	d->wait = 0;
 	curl_easy_setopt(request, CURLOPT_POSTFIELDS   , data);
 	curl_easy_setopt(request, CURLOPT_POSTFIELDSIZE, (long)len);
-	if (!curl_easy_perform(request)) {
+	if (curl_easy_perform(request)) {
 		d->wait = 60;
 	}
 	d->songPos += d->handled;
@@ -607,8 +643,9 @@ static int  sendSongs(const char *data, size_t len, struct request_data *d) {
  *             position of next line.
  * @return whether line was sucessfully extracted.
  */
-static int parse_reply_line(const char *str, size_t size,
-                            struct request_data *d, size_t *pos)
+static int parse_reply_line(const char *restrict str, size_t size,
+                            struct request_data *restrict d,
+                            size_t *restrict pos)
 	__attribute__((nonnull(1,3)));
 
 
@@ -621,14 +658,15 @@ static int parse_reply_line(const char *str, size_t size,
  * @param length line's length.
  * @param d      request state.
  */
-static void handle_reply_line(const char *str, size_t length,
-                              struct request_data *d)
+static void handle_reply_line(const char *restrict str, size_t length,
+                              struct request_data *restrict d)
 	__attribute__((nonnull));
 
 
 
-static int parse_reply_line(const char *str, size_t size,
-                             struct request_data *d, size_t *pos) {
+static int parse_reply_line(const char *restrict str, size_t size,
+                            struct request_data *restrict d,
+                            size_t *restrict pos) {
 	const char *start = str + (pos ? *pos : 0);
 	const char *ch = start, *const end = str + size;
 	size_t length;
@@ -664,9 +702,9 @@ static int parse_reply_line(const char *str, size_t size,
 
 
 
-static void handle_reply_line(const char *str, size_t length,
-                              struct request_data *d) {
-	char *line = malloc(length + 1);
+static void handle_reply_line(const char *restrict str, size_t length,
+                              struct request_data *restrict d) {
+	char *const line = malloc(length + 1);
 	unsigned num;
 	int pos;
 
@@ -685,9 +723,29 @@ static void handle_reply_line(const char *str, size_t length,
 			d->state = ST_IGNORE;
 			d->wait  = 60;
 		} else {
-			d->state = ST_HEADERS;
+			d->state = ST_HD_TYPE;
 		}
 		break;
+
+
+	case ST_HD_TYPE: {
+		char *ch;
+		if (strncmp(line, "Content-Type:", 13)) {
+			break;
+		}
+
+		for (ch = line + 13; isspace(*ch); ++ch);
+		if (!strncmp(ch, "text/x-music", 12)
+		    && (!ch[12] || ch[12]==';' || ch[12]==',' || isspace(ch[12]))) {
+			d->state = ST_HEADERS;
+		} else {
+			music_log(d->m, LOG_NOTICE, "Invalid content type: %s", ch);
+			d->state = ST_IGNORE;
+			d->wait  = 60;
+		}
+
+		break;
+	}
 
 
 	case ST_BODY_START:
@@ -696,7 +754,7 @@ static void handle_reply_line(const char *str, size_t length,
 			          "expected server status not: %s", line);
 			d->state = ST_IGNORE;
 			d->wait  = 60;
-		} else if (num/100!=100) {
+		} else if (num/100!=1) {
 			music_log(d->m, LOG_NOTICE, "Server status: %u %s", num,line+pos);
 			d->state = ST_BODY_ERROR;
 			d->wait = num/100==2 ? -1 : 60;
@@ -709,6 +767,11 @@ static void handle_reply_line(const char *str, size_t length,
 	case ST_BODY_CONT: {
 		const char *message;
 		int logLevel;
+
+		if (!strcmp(line, "END")) {
+			d->state = ST_IGNORE;
+			break;
+		}
 
 		if (sscanf(line, "SONG %u %n", &num, &pos)<1) {
 			music_log(d->m, LOG_DEBUG, "ignoring line: %s", line);
@@ -772,26 +835,20 @@ static void handle_reply_line(const char *str, size_t length,
 
 
 
-static size_t got_header(const char *str, size_t size, size_t n, void *arg) {
+static size_t got_header(const char *restrict str, size_t size, size_t n,
+                         void *restrict arg) {
 	struct request_data *const d = arg;
 	size *= n;
 
-	/*
-	 * We are interested in headers only if it is a first line of
-	 * response that is a "HTTP/1.x <code> <message>".  Other headers
-	 * as well as headers sent after the first body parts hes been
-	 * sent (ie. a Continue header) are to be ignored.
-	 */
-	if (d->state!=ST_START) {
-		return size;
+	if (d->state!=ST_IGNORE && d->state<ST_HD_TYPE) {
+		parse_reply_line(str, size, d, 0);
 	}
-
-	parse_reply_line(str, size, d, 0);
 	return size;
 }
 
 
-static size_t got_body  (const char *str, size_t size, size_t n, void *arg) {
+static size_t got_body  (const char *restrict str, size_t size, size_t n,
+                         void *restrict arg) {
 	struct request_data *const d = arg;
 	size_t pos = 0;
 	size *= n;
@@ -799,6 +856,12 @@ static size_t got_body  (const char *str, size_t size, size_t n, void *arg) {
 	/* This should never happen really, but in general we should check. */
 	if (d->state==ST_START) {
 		music_log(d->m, LOG_ERROR, "Got body without headers?");
+		d->state = ST_IGNORE;
+		d->wait  = 60;
+		return size;
+	}
+	if (d->state==ST_HD_TYPE) {
+		music_log(d->m, LOG_ERROR, "Missing Content-Type header");
 		d->state = ST_IGNORE;
 		d->wait  = 60;
 		return size;
@@ -833,9 +896,9 @@ static size_t got_body  (const char *str, size_t size, size_t n, void *arg) {
 		pos = ch - str;
 	}
 
-	while (parse_reply_line(str, size, d, &pos));
+	while (d->state!=ST_IGNORE && parse_reply_line(str, size, d, &pos));
 
-	if (pos!=size) {
+	if (d->state!=ST_IGNORE && pos!=size) {
 		d->data = realloc(d->data, d->data_len = size - pos);
 		memcpy(d->data, str+pos, size-pos);
 	}
@@ -889,4 +952,44 @@ static size_t escapeLength(const char *src) {
 		count += (escape_char(*src) << 1) | 1;
 	}
 	return count;
+}
+
+
+
+/****************************** Debugging ******************************/
+static int    got_debug (CURL *restrict request, curl_infotype type,
+                         const char *restrict data, size_t length,
+                         void *restrict arg) {
+	static const char *const types[CURLINFO_END] = {
+		"",         /* CURLINFO_TEXT */
+		"head < ",  /* CURLINFO_HEADER_IN */
+		"head > ",  /* CURLINFO_HEADER_OUT */
+		"data < ",  /* CURLINFO_DATA_IN */
+		"data > ",  /* CURLINFO_DATA_OUT */
+		"ssl < ",   /* CURLINFO_SSL_DATA_IN */
+		"ssl > ",   /* CURLINFO_SSL_DATA_OUT */
+	};
+
+	const char *ch, *const end = data + length;
+	size_t cap = 0, len;
+	char *str = 0;
+
+	(void)request;
+
+	ch = data;
+	do {
+		for (data = ch; ch!=end && *ch!='\n' && *ch!='\r'; ++ch);
+		len = ch - data;
+		if (cap<len+1) {
+			str = realloc(str, cap = len > 111 ? len + 1 : 112);
+		}
+		memcpy(str, data, len);
+		str[len] = 0;
+
+		music_log(arg, LOG_DEBUG, "curl: %s%s%s", types[type], str,
+		          ch!=end ? "" : " --");
+	} while (ch!=end && (*ch!='\r' || ++ch!=end) && (*ch!='\n' || ++ch!=end));
+
+	free(str);
+	return 0;
 }
