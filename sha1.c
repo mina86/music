@@ -1,6 +1,6 @@
 /*
  * SHA1 Implementation
- * $Id: sha1.c,v 1.2 2007/09/19 13:55:27 mina86 Exp $
+ * $Id: sha1.c,v 1.3 2007/09/26 18:02:13 mina86 Exp $
  * Copyright (c) 2007 by Michal Nazarewicz (mina86/AT/mina86.com)
  *
  * This program is free software; you can redistribute it and/or modify
@@ -23,17 +23,17 @@
 #include <string.h>
 
 
-char    *sha1_hex(char hash[41],
-                  const uint8_t *__restrict__ message, uint32_t len) {
+char    *sha1_hex(char *restrict hash,
+                  const unsigned char *restrict message, unsigned long len) {
 	static const char hexdigits[16] = "0123456789abcdef";
-	uint8_t temp[20], *rd = temp, *const end = temp + 20;
+	unsigned char temp[20], *rd = temp, *const end = temp + 20;
 	char *wr = hash;
 
 	sha1(rd, message, len);
 
 	while (rd!=end) {
-		*wr++ = hexdigits[*rd >> 4];
-		*wr++ = hexdigits[*rd & 15];
+		*wr++ = hexdigits[(*rd & 0xf0) >> 4];
+		*wr++ = hexdigits[ *rd & 0x0f      ];
 		++rd;
 	}
 
@@ -43,23 +43,23 @@ char    *sha1_hex(char hash[41],
 
 
 
-char    *sha1_b64(char hash[29],
-                  const uint8_t *__restrict__ message, uint32_t len) {
+char    *sha1_b64(char *restrict hash,
+                  const unsigned char *restrict message, unsigned long len) {
 	static const char b64digits[64] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-	uint8_t temp[20], *rd = temp, *const end = temp + 18;
+	unsigned char temp[20], *rd = temp, *const end = temp + 18;
 	char *wr = hash;
 
 	sha1(rd, message, len);
 
 	while (rd!=end) {
-		*wr++ = b64digits[rd[0] >> 2];
+		*wr++ = b64digits[(rd[0] & 0xff) >> 2];
 		*wr++ = b64digits[((rd[0] & 3) << 4) | (rd[1] >> 4)];
 		*wr++ = b64digits[((rd[1] & 15) << 2) | (rd[2] >> 6)];
 		*wr++ = b64digits[rd[2] & 63];
 		rd += 3;
 	}
 
-	*wr++ = b64digits[rd[0] >> 2];
+	*wr++ = b64digits[(rd[0] & 0xff) >> 2];
 	*wr++ = b64digits[((rd[0] & 3) << 4) | (rd[1] >> 4)];
 	*wr++ = b64digits[(rd[1] & 15) << 2];
 	*wr++ = '=';
@@ -120,10 +120,9 @@ char    *sha1_b64(char hash[29],
 #if HAVE_OPENSSL_H
 #include <openssl/sha.h>
 
-uint8_t *sha1    (uint8_t hash[20],
-                  const uint8_t *__restrict__ message, uint32_t len) {
-	SHA1((const unsigned char *)message, (unsigned long)len,
-	     (unsigned char*)hash);
+unsigned char *sha1(unsigned char *restrict hash,
+                    const unsigned char *restrict message, unsigned long len){
+	SHA1(message, len, hash);
 	return hash;
 }
 
@@ -139,7 +138,7 @@ uint8_t *sha1    (uint8_t hash[20],
  *          then 32).
  * @return value rotatt n bits left.
  */
-static __inline__ uint32_t rol(uint32_t value, unsigned n) {
+static inline uint32_t rol(uint32_t value, unsigned n) {
 	return (value << n) | (value >> (32 - n));
 }
 
@@ -151,17 +150,17 @@ static __inline__ uint32_t rol(uint32_t value, unsigned n) {
  * @param block 512-bit long block to handle.
  * @param state SHA1 state.
  */
-static void sha1_block(const uint8_t block[64], uint32_t state[5]) {
+static void sha1_block(const unsigned char *restrict block,
+                       uint32_t *restrict state) {
 	uint32_t w[16], a = state[0], b = state[1], c = state[2], d = state[3],
 		e = state[4];
 	unsigned i;
-	const uint8_t *bl = block;
 
 	/*  0 <= i < 16 */
 	for (i = 0; i < 16; ++i) {
 		uint32_t f = 0x5A827999 + (d ^ (b & (c ^ d)));
-		w[i] = BE2INT(bl);
-		bl += 4;
+		w[i] = BE2INT(block);
+		block += 4;
 		f += rol(a, 5) + e + w[i];
 		e = d; d = c; c = rol(b, 30); b = a; a = f;
 	}
@@ -207,8 +206,8 @@ static void sha1_block(const uint8_t block[64], uint32_t state[5]) {
 
 
 
-uint8_t *sha1    (uint8_t hash[20],
-                  const uint8_t *__restrict__ message, uint32_t len) {
+unsigned char *sha1(unsigned char *restrict hash,
+                    const unsigned char *restrict message, unsigned long len){
 	uint32_t state[5] = {
 		0x67452301, 0xEFCDAB89, 0x98BADCFE, 0x10325476, 0xC3D2E1F0
 	}, i;
@@ -271,7 +270,7 @@ int main(void) {
 		{ 0, 0, "" }
 	}, *test = tests;
 
-	uint8_t *buffer = 0;
+	unsigned char *buffer = 0;
 	char hash[41];
 	size_t capacity = 0;
 	int result = EXIT_SUCCESS, cmp;
@@ -282,7 +281,7 @@ int main(void) {
 		size_t i = 0;
 
 		if (capacity < len) {
-			uint8_t *tmp = realloc(buffer, len);
+			unsigned char *tmp = realloc(buffer, len);
 			if (!tmp) {
 				printf("%02d: ERR not enough memory\n", test - tests);
 				result = EXIT_FAILURE;
