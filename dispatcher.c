@@ -1,6 +1,6 @@
 /*
  * "Listening to" daemon songs dispatcher.
- * $Id: dispatcher.c,v 1.2 2007/09/26 18:00:32 mina86 Exp $
+ * $Id: dispatcher.c,v 1.3 2007/09/26 22:24:08 mina86 Exp $
  * Copyright (c) 2007 by Michal Nazarewicz (mina86/AT/mina86.com)
  *
  * This program is free software; you can redistribute it and/or modify
@@ -50,8 +50,8 @@ static void  module_stop (const struct music_module *restrict m)
  * ignored.
  *
  * @param m dispatcher module to stop.
- * @param songs one element array of pointers to songs.
- * @param errorPositions ignored.
+ * @param song the song songs.
+ * @param modules ignored.
  * @return undefined value.
  */
 static void  module_cache(const struct music_module *restrict m,
@@ -108,9 +108,8 @@ struct dispatcher_config {
  * Frees a single linked list and all song's data.
  *
  * @param first linked list first element or NULL.
- * @param free_data whether to free song's data as well.
  */
-static void slist_free(struct slist *restrict first) {
+static void slist_free(struct slist *first) {
 	struct slist *tmp;
 	for (; first; first = tmp) {
 		tmp = first->next;
@@ -127,28 +126,22 @@ static void slist_free(struct slist *restrict first) {
 /**
  * Initialises dispatcher module.
  *
- * @param cfg core configuration.
  * @return dispatcher module or NULL on error.
  */
 struct music_module *dispatcher_init() {
 	struct dispatcher_config *cfg;
-	struct music_module *const m = malloc(sizeof *m + sizeof *cfg);
+	struct music_module *const m = music_init(MUSIC_CORE, sizeof *cfg);
 
-	m->type        = MUSIC_CORE;
 	m->start       = module_start;
 	m->stop        = module_stop;
-	m->free        = 0;
-	m->config      = 0;
 	m->song.cache  = module_cache;
-	m->retryCached = 0;
-
-	cfg = m->data = m + 1;
-	cfg->thread     = 0;
-	cfg->first      = 0;
-	cfg->count      = 0;
-	cfg->outCount   = 0;
+	cfg            = m->data;
+	cfg->thread    = 0;
+	cfg->first     = 0;
+	cfg->count     = 0;
+	cfg->outCount  = 0;
 	pthread_mutex_init(&cfg->mutex, 0);
-	pthread_cond_init(&cfg->cond, 0);
+	pthread_cond_init (&cfg->cond, 0);
 
 	return m;
 }
