@@ -1,6 +1,6 @@
 /*
  * "Listening to" daemon header file
- * $Id: music.h,v 1.12 2007/09/26 18:00:32 mina86 Exp $
+ * $Id: music.h,v 1.13 2007/09/26 22:24:20 mina86 Exp $
  * Copyright (c) 2007 by Michal Nazarewicz (mina86/AT/mina86.com)
  *
  * This program is free software; you can redistribute it and/or modify
@@ -32,10 +32,10 @@
  * Structure representing a song.
  */
 struct music_song {
-	const char *title;   /**< Song's title. */
-	const char *artist;  /**< Song's performer. */
-	const char *album;   /**< Song's album. */
-	const char *genre;   /**< Song's genre. */
+	const char *restrict title;   /**< Song's title. */
+	const char *restrict artist;  /**< Song's performer. */
+	const char *restrict album;   /**< Song's album. */
+	const char *restrict genre;   /**< Song's genre. */
 	time_t time;         /**< The time song was reported. */
 	time_t endTime;      /**< The time song (will) end(ed). */
 	unsigned length;     /**< Song's length in seconds. */
@@ -47,7 +47,7 @@ struct music_song {
  * Structure used with music_config() function.
  */
 struct music_option {
-	const char *opt;  /** Option keyword to recognise. */
+	const char *restrict opt;  /** Option keyword to recognise. */
 	/**
 	 * What kind of argument option takes.
 	 */
@@ -73,7 +73,7 @@ struct music_module {
 	/**
 	 * Module type.
 	 */
-	enum {
+	enum music_module_type {
 		MUSIC_CORE   = -1,  /**< Reserved for core. */
 		MUSIC_IN     =  0,  /**< Module is an input module. */
 		MUSIC_OUT    =  1,  /**< Module is an output module. */
@@ -213,9 +213,9 @@ struct music_module {
 	 * using name configuration option.  Module must not touch it.
 	 */
 #ifdef MUSIC_INTERNAL_H
-	char *name;
+	char *restrict name;
 #else
-	const char *const name;
+	const char *restrict const name;
 #endif
 
 	/**
@@ -424,6 +424,23 @@ void music_retry_cached(const struct music_module *restrict m)
  */
 int  music_run_once_check(void (*func)(void), void *restrict arg)
 	__attribute__((nonnull(1), visibility("default")));
+
+
+
+/**
+ * Creates a new music_module object and initialises it to zero.
+ * Also, if cfgSize is not zero will allocate cfgSize bytes more and
+ * set data variable of music_module structure to this region.  Note,
+ * that this region must not be free()ed!  It will be free()ed when
+ * module is free()ed.
+ *
+ * @param type module's type.
+ * @param cfgSize size of configuration structure to allocate.
+ * @return newly created music_module object or NULL on error.
+ */
+struct music_module *music_init(enum music_module_type type,
+                                size_t cfgSize)
+	__attribute__((nonnull, visibility("default")));
 
 
 
