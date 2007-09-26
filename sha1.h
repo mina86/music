@@ -1,6 +1,6 @@
 /*
  * SHA1 Implementation
- * $Id: sha1.h,v 1.4 2007/09/26 18:02:13 mina86 Exp $
+ * $Id: sha1.h,v 1.5 2007/09/26 22:23:23 mina86 Exp $
  * Copyright (c) 2007 by Michal Nazarewicz (mina86/AT/mina86.com)
  *
  * This program is free software; you can redistribute it and/or modify
@@ -30,7 +30,7 @@
  *
  * @param hash location where to save hash.
  * @param message message to calculate SHA1 of.
- * @param message's length.
+ * @param len message's length in 8-bit bytes.
  * @return location where hash was saved (ie. value of hash argument).
  */
 unsigned char *sha1(unsigned char hash[20],
@@ -44,7 +44,7 @@ unsigned char *sha1(unsigned char hash[20],
  *
  * @param hash location where to save hash.
  * @param message message to calculate SHA1 of.
- * @param message's length.
+ * @param len message's length in 8-bit bytes.
  * @return location where hash was saved (ie. value of hash argument).
  */
 char    *sha1_hex(char hash[41],
@@ -58,7 +58,7 @@ char    *sha1_hex(char hash[41],
  *
  * @param hash location where to save hash.
  * @param message message to calculate SHA1 of.
- * @param message's length.
+ * @param len message's length in 8-bit bytes.
  * @return location where hash was saved (ie. value of hash argument).
  */
 char    *sha1_b64(char hash[29],

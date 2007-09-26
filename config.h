@@ -1,6 +1,6 @@
 /*
  * "Listening to" daemon configuration file
- * $Id: config.h,v 1.7 2007/09/26 17:53:21 mina86 Exp $
+ * $Id: config.h,v 1.8 2007/09/26 22:22:49 mina86 Exp $
  * Copyright (c) 2007 by Michal Nazarewicz (mina86/AT/mina86.com)
  *
  * This program is free software; you can redistribute it and/or modify
@@ -34,13 +34,14 @@
 #    define inline   __inline__
 #    define restrict __restrict__
 #  else
-#    define inline   /**< Defined for compilers not supporting inline. */
-#    define restrict /**< Defined for compilers not supporting restrict. */
+#    define inline   /**< Defined depending on compiler supporting inline. */
+#    define restrict /**< Defined depending on compiler supporting restrict.*/
 #  endif
 #endif
 
 #if !defined __GNUC__ && !defined __attribute__
-#  define __attribute__(x) /**< Defined for compilers different then GCC. */
+#  define __attribute__(x) /**< Defined as empty for compilers
+                                different then GCC. */
 #endif
 
 

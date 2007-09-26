@@ -1,6 +1,6 @@
 /*
  * "Listening to" daemon MPD input module
- * $Id: out_http.c,v 1.7 2007/09/26 18:03:57 mina86 Exp $
+ * $Id: out_http.c,v 1.8 2007/09/26 22:23:23 mina86 Exp $
  * Copyright (c) 2007 by Michal Nazarewicz (mina86/AT/mina86.com)
  *
  * This program is free software; you can redistribute it and/or modify
@@ -77,7 +77,7 @@ static int   module_conf (const struct music_module *restrict m,
 /**
  * Submits songs.  See music_module::song::submit.
  *
- * @param out_http module.
+ * @param m out_http module.
  * @param songs NULL terminated list of songs to submit.
  * @param errorPositions output array with positions of errors that
  *                       failed to be submitted.
