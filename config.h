@@ -1,6 +1,6 @@
 /*
  * "Listening to" daemon configuration file
- * $Id: config.h,v 1.6 2007/09/20 03:37:22 mina86 Exp $
+ * $Id: config.h,v 1.7 2007/09/26 17:53:21 mina86 Exp $
  * Copyright (c) 2007 by Michal Nazarewicz (mina86/AT/mina86.com)
  *
  * This program is free software; you can redistribute it and/or modify
@@ -29,17 +29,18 @@
 #define HAVE_ENDIAN_H  1  /**< Defined as 1 when we have endian.h. */
 
 
-#ifndef __GNUC__
-#  ifndef __attribute__
-#    define __attribute__(x) /**< Defined for compilers different then GCC. */
+#if __STDC_VERSION__ < 199901L
+#  if defined __GNUC__
+#    define inline   __inline__
+#    define restrict __restrict__
+#  else
+#    define inline   /**< Defined for compilers not supporting inline. */
+#    define restrict /**< Defined for compilers not supporting restrict. */
 #  endif
-# if __STDC_VERSION__ + 0 >= 199901L
-#  define __inline__ inline
-#  define __restrict__ restrict
-# else
-#  define __inline__    /**< Defined to inline if we have C99 compiler. */
-#  define __restrict__  /**< Defined to restrict if we have C99 compiler. */
-# endif
+#endif
+
+#if !defined __GNUC__ && !defined __attribute__
+#  define __attribute__(x) /**< Defined for compilers different then GCC. */
 #endif
 
 
