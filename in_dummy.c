@@ -1,6 +1,6 @@
 /*
  * "Listening to" daemon dummy input module
- * $Id: in_dummy.c,v 1.9 2007/09/19 14:29:27 mina86 Exp $
+ * $Id: in_dummy.c,v 1.10 2007/09/26 18:00:32 mina86 Exp $
  * Copyright (c) 2007 by Michal Nazarewicz (mina86/AT/mina86.com)
  *
  * This program is free software; you can redistribute it and/or modify
@@ -32,7 +32,7 @@
  * @param m in_mpd module to start.
  * @return whether starting succeed.
  */
-static int   module_start(const struct music_module *m)
+static int   module_start(const struct music_module *restrict m)
 	__attribute__((nonnull));
 
 
@@ -41,7 +41,7 @@ static int   module_start(const struct music_module *m)
  *
  * @param m in_mpd module to stop.
  */
-static void  module_stop (const struct music_module *m)
+static void  module_stop (const struct music_module *restrict m)
 	__attribute__((nonnull));
 
 
@@ -52,7 +52,7 @@ static void  module_stop (const struct music_module *m)
  *            to void.
  * @return return value shall be ignored.
  */
-static void *module_run  (void *ptr)        __attribute__((nonnull));
+static void *module_run  (void *restrict ptr) __attribute__((nonnull));
 
 
 
@@ -65,7 +65,8 @@ struct module_config {
 
 
 
-struct music_module *init(const char *name, const char *arg) {
+struct music_module *init(const char *restrict name,
+                          const char *restrict arg) {
 	struct module_config *cfg;
 	struct music_module *const m = malloc(sizeof *m + sizeof *cfg);
 	(void)name; /* supress warning */
@@ -87,7 +88,7 @@ struct music_module *init(const char *name, const char *arg) {
 
 
 
-static int  module_start(const struct music_module *m) {
+static int  module_start(const struct music_module *restrict m) {
 	struct module_config *const cfg = m->data;
 	if (pthread_create(&cfg->thread, 0, module_run, (void*)m)) {
 		music_log_errno(m, LOG_FATAL, "pthread_create");
@@ -98,14 +99,14 @@ static int  module_start(const struct music_module *m) {
 
 
 
-static void module_stop (const struct music_module *m) {
+static void module_stop (const struct music_module *restrict m) {
 	struct module_config *const cfg = m->data;
 	pthread_join(cfg->thread, 0);
 }
 
 
 
-static void *module_run  (void *ptr) {
+static void *module_run  (void *restrict ptr) {
 	static struct music_song song = {
 		"Title",
 		"Artist",

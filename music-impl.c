@@ -1,6 +1,6 @@
 /*
  * "Listening to" daemon library functions implementation
- * $Id: music-impl.c,v 1.7 2007/09/21 22:15:12 mina86 Exp $
+ * $Id: music-impl.c,v 1.8 2007/09/26 18:00:32 mina86 Exp $
  * Copyright (c) 2007 by Michal Nazarewicz (mina86/AT/mina86.com)
  *
  * This program is free software; you can redistribute it and/or modify
@@ -51,13 +51,14 @@
  * @param ap format arguments.
  * @param errStr whether to append error string.
  */
-static void music_log_internal(const struct music_module *m, unsigned level,
-                               const char *fmt, va_list ap, int errStr);
+static void music_log_internal(const struct music_module *restrict m,
+                               unsigned level, const char *restrict fmt,
+                               va_list ap, int errStr);
 
 
 
-void music_log (const struct music_module *m, unsigned level,
-                const char *fmt, ...){
+void music_log (const struct music_module *restrict m, unsigned level,
+                const char *restrict fmt, ...){
 	va_list ap;
 	va_start(ap, fmt);
 	music_log_internal(m, level, fmt, ap, 0);
@@ -65,8 +66,8 @@ void music_log (const struct music_module *m, unsigned level,
 
 
 
-void music_log_errno(const struct music_module *m, unsigned level,
-                     const char *fmt, ...) {
+void music_log_errno(const struct music_module *restrict m, unsigned level,
+                     const char *restrict fmt, ...) {
 	va_list ap;
 	va_start(ap, fmt);
 	music_log_internal(m, level, fmt, ap, 1);
@@ -84,16 +85,18 @@ void music_log_errno(const struct music_module *m, unsigned level,
  * @param ap format arguments.
  * @param error error string or NULL.
  */
-static void music_log_internal_do(FILE *stream, const char *date,
-                                  const char *name,
-                                  const char *fmt, va_list ap,
-                                  const char *error)
+static void music_log_internal_do(FILE *restrict stream,
+                                  const char *restrict date,
+                                  const char *restrict name,
+                                  const char *restrict fmt, va_list ap,
+                                  const char *restrict error)
 	__attribute__((nonnull(1,2,3)));
 
 
 
-static void music_log_internal(const struct music_module *m, unsigned level,
-                               const char *fmt, va_list ap, int errStr) {
+static void music_log_internal(const struct music_module *restrict m,
+                               unsigned level, const char *restrict fmt,
+                               va_list ap, int errStr) {
 	static char buf[32];
 	struct config *cfg = m->core->data;
 	char *str;
@@ -129,10 +132,11 @@ static void music_log_internal(const struct music_module *m, unsigned level,
 
 
 
-static void music_log_internal_do(FILE *stream, const char *date,
-                                  const char *name,
-                                  const char *fmt, va_list ap,
-                                  const char *error) {
+static void music_log_internal_do(FILE *restrict stream,
+                                  const char *restrict date,
+                                  const char *restrict name,
+                                  const char *restrict fmt, va_list ap,
+                                  const char *restrict error) {
 	fprintf(stream, "%s%s: ", date, name);
 	vfprintf(stream, fmt, ap);
 	va_end(ap);
@@ -145,9 +149,10 @@ static void music_log_internal_do(FILE *stream, const char *date,
 
 
 
-int   music_config(const struct music_module *m,
-                   const struct music_option *options,
-                   const char *opt, const char *arg, int req) {
+int   music_config(const struct music_module *restrict m,
+                   const struct music_option *restrict options,
+                   const char *restrict opt, const char *restrict arg,
+                   int req) {
 	const struct music_option *o = options;
 	while (o->opt && strcmp(o->opt, opt)) ++o;
 	if (!o->opt) {
@@ -186,7 +191,7 @@ int   music_config(const struct music_module *m,
 
 
 
-void music_retry_cached(const struct music_module *m) {
+void music_retry_cached(const struct music_module *restrict m) {
 	const struct music_module *cache = m->core->next;
 	if (cache && cache->type==MUSIC_CACHE && cache->retryCached) {
 		const struct music_module *array[2] = { 0, 0 };
@@ -197,7 +202,7 @@ void music_retry_cached(const struct music_module *m) {
 
 
 
-char *music_strdup_realloc(char *old, const char *str) {
+char *music_strdup_realloc(char *restrict old, const char *restrict str) {
 	size_t len = strlen(str) + 1;
 	old = realloc(old, len);
 	memcpy(old, str, len);
@@ -206,7 +211,7 @@ char *music_strdup_realloc(char *old, const char *str) {
 
 
 
-int music_sleep(const struct music_module *m, unsigned long mili) {
+int music_sleep(const struct music_module *restrict m, unsigned long mili) {
 	int ret = 0;
 
 #ifdef HAVE_POLL
@@ -245,7 +250,7 @@ int music_sleep(const struct music_module *m, unsigned long mili) {
 
 
 
-int  music_run_once_check(void (*func)(void), void *arg) {
+int  music_run_once_check(void (*func)(void), void *restrict arg) {
 	static struct func_slist {
 		struct func_slist *next;
 		void (*func)(void);
@@ -269,8 +274,8 @@ int  music_run_once_check(void (*func)(void), void *arg) {
 
 
 
-void  music_song(const struct music_module *m,
-                 const struct music_song *song) {
+void  music_song(const struct music_module *restrict m,
+                 const struct music_song *restrict song) {
 	struct music_module *core = m->core;
 	const char *error = 0;
 

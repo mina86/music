@@ -1,6 +1,6 @@
 /*
  * "Listening to" daemon MPD input module
- * $Id: in_mpd.c,v 1.9 2007/09/19 14:29:27 mina86 Exp $
+ * $Id: in_mpd.c,v 1.10 2007/09/26 18:00:32 mina86 Exp $
  * Copyright (c) 2007 by Michal Nazarewicz (mina86/AT/mina86.com)
  *
  * This program is free software; you can redistribute it and/or modify
@@ -35,7 +35,7 @@
  * @param m in_mpd module to start.
  * @return whether starting succeed.
  */
-static int   module_start(const struct music_module *m)
+static int   module_start(const struct music_module *restrict m)
 	__attribute__((nonnull));
 
 
@@ -44,7 +44,7 @@ static int   module_start(const struct music_module *m)
  *
  * @param m in_mpd module to stop.
  */
-static void  module_stop (const struct music_module *m)
+static void  module_stop (const struct music_module *restrict m)
 	__attribute__((nonnull));
 
 
@@ -53,7 +53,8 @@ static void  module_stop (const struct music_module *m)
  *
  * @param m in_mpd module to free.
  */
-static void  module_free (struct music_module *m) __attribute__((nonnull));
+static void  module_free (struct music_module *restrict m)
+	__attribute__((nonnull));
 
 
 /**
@@ -64,8 +65,8 @@ static void  module_free (struct music_module *m) __attribute__((nonnull));
  * @param arg argument.
  * @return whether option was accepted.
  */
-static int   module_conf (const struct music_module *m, const char *opt,
-                          const char *arg)
+static int   module_conf (const struct music_module *restrict m,
+                          const char *restrict opt, const char *restrict arg)
 	__attribute__((nonnull(1)));
 
 
@@ -76,7 +77,7 @@ static int   module_conf (const struct music_module *m, const char *opt,
  *            to void.
  * @return return value shall be ignored.
  */
-static void *module_run  (void *ptr)        __attribute__((nonnull));
+static void *module_run  (void *restrict ptr) __attribute__((nonnull));
 
 
 
@@ -92,7 +93,8 @@ struct module_config {
 
 
 
-struct music_module *init(const char *name, const char *arg) {
+struct music_module *init(const char *restrict name,
+                          const char *restrict arg) {
 	struct module_config *cfg;
 	struct music_module *const m = malloc(sizeof *m + sizeof *cfg);
 	(void)name; /* supress warning */
@@ -118,7 +120,7 @@ struct music_module *init(const char *name, const char *arg) {
 
 
 
-static int   module_start(const struct music_module *m) {
+static int   module_start(const struct music_module *restrict m) {
 	struct module_config *const cfg = m->data;
 	if (pthread_create(&cfg->thread, 0, module_run, (void*)m)) {
 		music_log_errno(m, LOG_FATAL, "pthread_create");
@@ -130,7 +132,7 @@ static int   module_start(const struct music_module *m) {
 
 
 
-static void  module_stop (const struct music_module *m) {
+static void  module_stop (const struct music_module *restrict m) {
 	struct module_config *cfg = m->data;
 	pthread_join(cfg->thread, 0);
 }
@@ -138,7 +140,7 @@ static void  module_stop (const struct music_module *m) {
 
 
 
-static void  module_free (struct music_module *m) {
+static void  module_free (struct music_module *restrict m) {
 	struct module_config *const cfg = m->data;
 	free(cfg->host);
 	free(cfg->password);
@@ -147,8 +149,9 @@ static void  module_free (struct music_module *m) {
 
 
 
-static int   module_conf (const struct music_module *m,
-                          const char *opt, const char *arg) {
+static int   module_conf (const struct music_module *restrict m,
+                          const char *restrict opt,
+                          const char *restrict arg) {
 	static const struct music_option options[] = {
 		{ "host",     1, 1 },
 		{ "port",     2, 2 },
@@ -186,7 +189,7 @@ static int   module_conf (const struct music_module *m,
  * @param m in_mpd module.
  * @return connection to MPD or NULL on error.
  */
-static mpd_Connection *module_do_connect(const struct music_module *m)
+static mpd_Connection *module_do_connect(const struct music_module *restrict m)
 	__attribute__((nonnull));
 
 
@@ -200,7 +203,7 @@ static mpd_Connection *module_do_connect(const struct music_module *m)
  * @param conn connection to MPD.
  */
 
-static void module_do_songs(const struct music_module *m,
+static void module_do_songs(const struct music_module *restrict m,
                              mpd_Connection *conn) __attribute__((nonnull));
 
 
@@ -214,14 +217,14 @@ static void module_do_songs(const struct music_module *m,
  * @param songid song's ID to retrive.
  * @return zero on error, non-zero on success.
  */
-static int  module_do_submit_song(const struct music_module *m,
-                                  mpd_Connection *conn,
+static int  module_do_submit_song(const struct music_module *restrict m,
+                                  mpd_Connection *restrict conn,
                                   time_t start, int songid)
 	__attribute__((nonnull));
 
 
 
-static void *module_run  (void *ptr) {
+static void *module_run  (void *restrict ptr) {
 	const struct music_module *const m = ptr;
 
 	do {
@@ -240,7 +243,7 @@ static void *module_run  (void *ptr) {
 
 
 
-static mpd_Connection *module_do_connect(const struct music_module *m) {
+static mpd_Connection *module_do_connect(const struct music_module *restrict m) {
 	struct module_config *const cfg = m->data;
 	unsigned delay = 5000;
 
@@ -267,7 +270,7 @@ static mpd_Connection *module_do_connect(const struct music_module *m) {
 
 
 
-static void module_do_songs(const struct music_module *m,
+static void module_do_songs(const struct music_module *restrict m,
                             mpd_Connection *conn) {
 	int id = -1, count = 0;
 	time_t start;
@@ -298,8 +301,8 @@ static void module_do_songs(const struct music_module *m,
 
 
 
-static int  module_do_submit_song(const struct music_module *m,
-                                  mpd_Connection *conn,
+static int  module_do_submit_song(const struct music_module *restrict m,
+                                  mpd_Connection *restrict conn,
                                   time_t start, int songid) {
 	mpd_InfoEntity *info;
 	struct music_song song;

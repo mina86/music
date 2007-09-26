@@ -1,6 +1,6 @@
 /*
  * "Listening to" daemon
- * $Id: music.c,v 1.9 2007/09/21 22:15:02 mina86 Exp $
+ * $Id: music.c,v 1.10 2007/09/26 18:00:32 mina86 Exp $
  * Copyright (c) 2007 by Michal Nazarewicz (mina86/AT/mina86.com)
  *
  * This program is free software; you can redistribute it and/or modify
@@ -41,8 +41,8 @@
  * @param arg argument.
  * @return whether option was accepted.
  */
-static int  config_line(const struct music_module *m,
-                        const char *opt, const char *arg)
+static int  config_line(const struct music_module *restrict m,
+                        const char *restrict opt, const char *restrict arg)
 	__attribute__((nonnull(1)));
 
 
@@ -58,7 +58,8 @@ static int  config_line(const struct music_module *m,
  * @param m_ pointer to module being configured now.
  * @return zero on error, non-zero on success.
  */
-static int  parse_line(char *buf, struct music_module **m_)
+static int  parse_line(char *restrict buf,
+                       struct music_module *restrict *restrict m_)
 	__attribute__((nonnull));
 
 
@@ -69,7 +70,8 @@ static int  parse_line(char *buf, struct music_module **m_)
  * @param core core module.
  * @return zero if one of the modules had invalid type, non-zero on success.
  */
-static int  sort_modules(struct music_module *core) __attribute__((nonnull));
+static int  sort_modules(struct music_module *restrict core)
+	__attribute__((nonnull));
 
 
 
@@ -336,9 +338,10 @@ int main(int argc, char **argv) {
 
 
 /****************************** Parse Line ******************************/
-static int  parse_line(char *buf, struct music_module **m_) {
-	struct music_module *m    = *m_;
-	struct music_module *core = m->core;
+static int  parse_line(char *restrict buf,
+                       struct music_module *restrict *restrict m_) {
+	struct music_module *restrict m    = *m_;
+	struct music_module *restrict core = m->core;
 	struct music_module *(*init)(const char *name, const char *arg);
 	char *option, *moduleName, *argument, *ch, *end;
 	void *handle;
@@ -452,7 +455,7 @@ static int  parse_line(char *buf, struct music_module **m_) {
 
 
 /****************************** Sort modules ******************************/
-static int  sort_modules(struct music_module *core) {
+static int  sort_modules(struct music_module *restrict core) {
 	struct music_module *buckets[3] = { 0, 0, 0 }, *last[3] = { 0, 0, 0 }, *m;
 	struct music_module *dispatcher = 0, *next;
 
@@ -506,8 +509,8 @@ static int  sort_modules(struct music_module *core) {
 
 
 /****************************** Config Line ******************************/
-static int  config_line(const struct music_module *m,
-                        const char *opt, const char *arg) {
+static int  config_line(const struct music_module *restrict m,
+                        const char *restrict opt, const char *restrict arg) {
 	static struct music_option options[] = {
 		{ "logfile" , 1, 1 },
 		{ "loglevel", 2, 2 },

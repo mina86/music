@@ -1,6 +1,6 @@
 /*
  * "Listening to" daemon songs dispatcher.
- * $Id: dispatcher.c,v 1.1 2007/09/20 03:38:48 mina86 Exp $
+ * $Id: dispatcher.c,v 1.2 2007/09/26 18:00:32 mina86 Exp $
  * Copyright (c) 2007 by Michal Nazarewicz (mina86/AT/mina86.com)
  *
  * This program is free software; you can redistribute it and/or modify
@@ -31,7 +31,7 @@
  * @param m dispatcher module to start.
  * @return whether starting succeed.
  */
-static int   module_start(const struct music_module *m)
+static int   module_start(const struct music_module *restrict m)
 	__attribute__((nonnull));
 
 
@@ -40,7 +40,7 @@ static int   module_start(const struct music_module *m)
  *
  * @param m dispatcher module to stop.
  */
-static void  module_stop (const struct music_module *m)
+static void  module_stop (const struct music_module *restrict m)
 	__attribute__((nonnull));
 
 
@@ -54,9 +54,9 @@ static void  module_stop (const struct music_module *m)
  * @param errorPositions ignored.
  * @return undefined value.
  */
-static void  module_cache(const struct music_module *m,
-                          const struct music_song *song,
-                          const struct music_module *const *modules)
+static void  module_cache(const struct music_module *restrict m,
+                          const struct music_song *restrict song,
+                          const struct music_module *restrict const *restrict modules)
 	__attribute__((nonnull(1, 2)));
 
 
@@ -67,7 +67,7 @@ static void  module_cache(const struct music_module *m,
  *            to void.
  * @return return value shall be ignored.
  */
-static void *module_run_cache(void *ptr)        __attribute__((nonnull));
+static void *module_run_cache   (void *restrict ptr) __attribute__((nonnull));
 
 
 /**
@@ -77,7 +77,7 @@ static void *module_run_cache(void *ptr)        __attribute__((nonnull));
  *            to void.
  * @return return value shall be ignored.
  */
-static void *module_run_no_cache(void *ptr)     __attribute__((nonnull));
+static void *module_run_no_cache(void *restrict ptr) __attribute__((nonnull));
 
 
 
@@ -110,7 +110,7 @@ struct dispatcher_config {
  * @param first linked list first element or NULL.
  * @param free_data whether to free song's data as well.
  */
-static void slist_free(struct slist *first) {
+static void slist_free(struct slist *restrict first) {
 	struct slist *tmp;
 	for (; first; first = tmp) {
 		tmp = first->next;
@@ -155,7 +155,7 @@ struct music_module *dispatcher_init() {
 
 
 
-static int   module_start(const struct music_module *m) {
+static int   module_start(const struct music_module *restrict m) {
 	struct dispatcher_config *const cfg = m->data;
 	struct music_module *o = m->next;
 	size_t i = 0;
@@ -189,7 +189,7 @@ static int   module_start(const struct music_module *m) {
 
 
 
-static void  module_stop (const struct music_module *m) {
+static void  module_stop (const struct music_module *restrict m) {
 	struct dispatcher_config *cfg = m->data;
 	pthread_mutex_lock(&cfg->mutex);
 	pthread_cond_signal(&cfg->cond);
@@ -203,9 +203,9 @@ static void  module_stop (const struct music_module *m) {
 
 
 
-static void  module_cache(const struct music_module *m,
-                          const struct music_song *song,
-                          const struct music_module *const *modules) {
+static void  module_cache(const struct music_module *restrict m,
+                          const struct music_song *restrict song,
+                          const struct music_module *restrict const *restrict modules){
 	struct dispatcher_config *const cfg = m->data;
 	struct slist *el = malloc(sizeof *el);
 	(void)modules;
@@ -234,7 +234,7 @@ static void  module_cache(const struct music_module *m,
 
 
 
-static void *module_run_no_cache(void *ptr) {
+static void *module_run_no_cache(void *restrict ptr) {
 	const struct music_module *const m = ptr, *o;
 	struct dispatcher_config *const cfg = m->data;
 	const size_t outCount = cfg->outCount;
@@ -279,15 +279,15 @@ static void *module_run_no_cache(void *ptr) {
 
 
 
-static void submit_songs_and_cache(const struct music_module *const m,
-                                   const struct music_song **songs,
-                                   size_t count, uint_least32_t *flags,
-                                   const struct music_module **outs)
+static void submit_songs_and_cache(const struct music_module *restrict m,
+                                   const struct music_song *restrict const *restrict songs,
+                                   size_t count, uint_least32_t *restrict flags,
+                                   const struct music_module *restrict *restrict outs)
 	__attribute__((nonnull));
 
 
 
-static void *module_run_cache  (void *ptr) {
+static void *module_run_cache  (void *restrict ptr) {
 	const struct music_module *const m = ptr;
 	struct dispatcher_config *const cfg = m->data;
 
@@ -339,14 +339,15 @@ static void *module_run_cache  (void *ptr) {
 
 
 
-static void submit_songs_and_cache(const struct music_module *const m,
-                                   const struct music_song **songs,
-                                   size_t songsCount, uint_least32_t *flags,
-                                   const struct music_module **outs) {
+static void submit_songs_and_cache(const struct music_module *restrict m,
+                                   const struct music_song *restrict const *restrict songs,
+                                   size_t count, uint_least32_t *restrict flags,
+                                   const struct music_module *restrict *restrict outs) {
 	struct dispatcher_config *const cfg = m->data;
 	const size_t outCount = cfg->outCount;
-	const struct music_module **const oarr = outs+outCount, **p;
-	const struct music_song **s;
+	const struct music_module *restrict *const oarr = outs+outCount;
+	const struct music_module *restrict *p;
+	const struct music_song *restrict const *s;
 	uint_least32_t mask;
 	size_t i;
 
@@ -371,7 +372,7 @@ static void submit_songs_and_cache(const struct music_module *const m,
 		size_t errPos[32];
 		int ret = outs[i]->song.send(outs[i], songs, errPos);
 
-		if (ret<0 || (size_t)ret >= songsCount) {
+		if (ret<0 || (size_t)ret >= count) {
 			flags[i] = 0xffffffff;
 		} else if (ret) {
 			while (ret) flags[i] |= ((uint_least32_t)1) << (errPos[--ret]&31);

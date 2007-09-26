@@ -1,6 +1,6 @@
 /*
  * "Listening to" daemon header file
- * $Id: music.h,v 1.11 2007/09/20 03:38:05 mina86 Exp $
+ * $Id: music.h,v 1.12 2007/09/26 18:00:32 mina86 Exp $
  * Copyright (c) 2007 by Michal Nazarewicz (mina86/AT/mina86.com)
  *
  * This program is free software; you can redistribute it and/or modify
@@ -89,7 +89,7 @@ struct music_module {
 	 * @param m module.
 	 * @return non-zero on success, zero on failure.
 	 */
-	int  (*start)(const struct music_module *m);
+	int  (*start)(const struct music_module *restrict m);
 
 
 	/**
@@ -97,7 +97,7 @@ struct music_module {
 	 *
 	 * @param m module.
 	 */
-	void (*stop)(const struct music_module *m);
+	void (*stop)(const struct music_module *restrict m);
 
 
 	/**
@@ -108,7 +108,7 @@ struct music_module {
 	 *
 	 * @param m module.
 	 */
-	void (*free)(struct music_module *m);
+	void (*free)(struct music_module *restrict m);
 
 
 	/**
@@ -125,8 +125,9 @@ struct music_module {
 	 * @param arg argument or NULL when configuration ended.
 	 * @return non-zero on success, zero on error.
 	 */
-	int  (*config)(const struct music_module *m, const char *opt,
-	                const char *arg);
+	int  (*config)(const struct music_module *restrict m,
+	                const char *restrict opt,
+	                const char *restrict arg);
 
 
 	/**
@@ -156,9 +157,9 @@ struct music_module {
 		 *                       NULL.
 		 * @return number of songs method failed to submit or -1.
 		 */
-		int (*send)(const struct music_module *m,
-		            const struct music_song *const *songs,
-		            size_t *errorPositions);
+		int (*send)(const struct music_module *restrict m,
+		            const struct music_song *restrict const *songs,
+		            size_t *restrict errorPositions);
 
 		/**
 		 * Stores song in cache for later resubmission.  Module must
@@ -174,9 +175,9 @@ struct music_module {
 		 * @param modules a NULL terminated array of pointers to
 		 *                output modules.
 		 */
-		void (*cache)(const struct music_module *m,
-		              const struct music_song *song,
-		              const struct music_module *const *modules);
+		void (*cache)(const struct music_module *restrict m,
+		              const struct music_song *restrict song,
+		              const struct music_module *restrict const *restrict modules);
 	} song;
 
 
@@ -191,8 +192,8 @@ struct music_module {
 	 * @param modules a NULL terminated array of pointers to output
 	 *        modules.
 	 */
-	void (*retryCached)(const struct music_module *m,
-	                    const struct music_module *const *modules);
+	void (*retryCached)(const struct music_module *restrict m,
+	                    const struct music_module *restrict const *restrict modules);
 
 
 
@@ -280,8 +281,8 @@ enum {
  * @param level message's level.
  * @param fmt message format (same as in printf()).
  */
-void  music_log   (const struct music_module *m, unsigned level,
-                   const char *fmt, ...)
+void  music_log   (const struct music_module *restrict m, unsigned level,
+                   const char *restrict fmt, ...)
 	__attribute__((format (printf, 3, 4), nonnull, visibility("default")));
 
 
@@ -297,8 +298,8 @@ void  music_log   (const struct music_module *m, unsigned level,
  * @param level message's level.
  * @param fmt message format (same as in printf()).
  */
-void  music_log_errno(const struct music_module *m, unsigned level,
-                      const char *fmt, ...)
+void  music_log_errno(const struct music_module *restrict m, unsigned level,
+                      const char *restrict fmt, ...)
 	__attribute__((format (printf, 3, 4), nonnull, visibility("default")));
 
 
@@ -319,9 +320,10 @@ void  music_log_errno(const struct music_module *m, unsigned level,
  * @return -1 on error, 0 if option was not found or option associated
  *         with an option.
  */
-int   music_config(const struct music_module *m,
-                   const struct music_option *options,
-                   const char *opt, const char *arg, int req)
+int   music_config(const struct music_module *restrict m,
+                   const struct music_option *restrict options,
+                   const char *restrict opt, const char *restrict arg,
+                   int req)
 	__attribute__((nonnull, visibility("default")));
 
 
@@ -333,8 +335,8 @@ int   music_config(const struct music_module *m,
  * @param m input module that raports song.
  * @param song a song it raports.
  */
-void  music_song  (const struct music_module *m,
-                   const struct music_song *song)
+void  music_song  (const struct music_module *restrict m,
+                   const struct music_song *restrict song)
 	__attribute__((nonnull, visibility("default")));
 
 
@@ -348,7 +350,7 @@ void  music_song  (const struct music_module *m,
  * @param str string to duplicate.
  * @return duplicated string.
  */
-char *music_strdup_realloc(char *old, const char *str)
+char *music_strdup_realloc(char *restrict old, const char *restrict str)
 	__attribute__((nonnull(2), visibility("default")));
 
 
@@ -374,7 +376,7 @@ char *music_strdup_realloc(char *old, const char *str)
  * @param mili number of miliseconds it wants to sleep.
  * @return -1 on error, 0 when core begins terminating, 1 otherwise.
  */
-int music_sleep(const struct music_module *m, unsigned long mili)
+int music_sleep(const struct music_module *restrict m, unsigned long mili)
 	__attribute__((nonnull, visibility("default")));
 
 
@@ -387,7 +389,7 @@ int music_sleep(const struct music_module *m, unsigned long mili)
  *
  * @param m output module that is ready to submit songs.
  */
-void music_retry_cached(const struct music_module *m)
+void music_retry_cached(const struct music_module *restrict m)
 	__attribute__((nonnull, visibility("default")));
 
 
@@ -420,7 +422,7 @@ void music_retry_cached(const struct music_module *m)
  * @returns 1 if it is the first time function was called with given
  *          arguments.
  */
-int  music_run_once_check(void (*func)(void), void *arg)
+int  music_run_once_check(void (*func)(void), void *restrict arg)
 	__attribute__((nonnull(1), visibility("default")));
 
 
@@ -436,7 +438,7 @@ int  music_run_once_check(void (*func)(void), void *arg)
  *            module name.
  * @return an initialised music_module structure or NULL on error.
  */
-struct music_module *init(const char *name, const char *arg)
+struct music_module *init(const char *restrict name, const char *restrict arg)
 	__attribute__((nonnull, visibility("default")));
 #endif
 
