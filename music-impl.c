@@ -1,6 +1,6 @@
 /*
  * "Listening to" daemon library functions implementation
- * $Id: music-impl.c,v 1.8 2007/09/26 18:00:32 mina86 Exp $
+ * $Id: music-impl.c,v 1.9 2007/09/26 22:23:53 mina86 Exp $
  * Copyright (c) 2007 by Michal Nazarewicz (mina86/AT/mina86.com)
  *
  * This program is free software; you can redistribute it and/or modify
@@ -299,4 +299,23 @@ void  music_song(const struct music_module *restrict m,
 	m->song.cache(m, song, 0);
 
 	return;
+}
+
+
+
+struct music_module *music_init(enum music_module_type type,
+                                size_t cfgSize) {
+	struct music_module *const m = malloc(sizeof *m + cfgSize);
+	if (m) {
+		m->type        = type;
+		m->start       = 0;
+		m->stop        = 0;
+		m->free        = 0;
+		m->config      = 0;
+		m->song.send   = 0;
+		/* m->song.cache  = 0; */
+		m->retryCached = 0;
+		m->data        = cfgSize ? m + 1 : 0;
+	}
+	return m;
 }
