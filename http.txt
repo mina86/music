@@ -16,7 +16,9 @@
       authentication creates a new session.
 
       <pass> is BASE64(SHA1(SHA1(<password>) + <current-time>)) with
-      optionally equal sing stripped from the end.
+      optionally equal sing stripped from the end.  Also a plus sign
+      in base64 encoded hash may be replaced with underscore or minus
+      sing.
 
     auth=session:<session-id>
     auth=close:<session-id>
@@ -60,10 +62,9 @@
     Lines are sorted from 0 to n-1.
 
     <status> is "OK" which means that song was accepted and added to
-    database, "REJECTED" which means that song was rejected or
-    "FAILED" meaning that there was an error when serwe tried to add
-    this song.  Client may retry to send the song only if it "FAILED"
-    to be added.
+    database, "REJ" which means that song was rejected or "FAIL"
+    meaning that there was an error when serwe tried to add this song.
+    Client may retry to send the song only if it "FAIL"ed to be added.
 
   2.2 201 Invalid User
 
