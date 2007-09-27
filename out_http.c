@@ -1,6 +1,6 @@
 /*
  * "Listening to" daemon MPD input module
- * $Id: out_http.c,v 1.8 2007/09/26 22:23:23 mina86 Exp $
+ * $Id: out_http.c,v 1.9 2007/09/27 14:26:40 mina86 Exp $
  * Copyright (c) 2007 by Michal Nazarewicz (mina86/AT/mina86.com)
  *
  * This program is free software; you can redistribute it and/or modify
@@ -33,25 +33,6 @@
 
 
 /**
- * Starts module.  See music_module::start.
- *
- * @param m out_http module to start.
- * @return whether starting succeed.
- */
-static int   module_start(const struct music_module *restrict m)
-	__attribute__((nonnull));
-
-
-/**
- * Stops module.  See music_module::stop.
- *
- * @param m out_http module to stop.
- */
-static void  module_stop (const struct music_module *restrict m)
-	__attribute__((nonnull));
-
-
-/**
  * Frees memory allocated by module.  See music_module::free.
  *
  * @param m out_http module to free.
@@ -69,8 +50,7 @@ static void  module_free (struct music_module *restrict m)
  * @return whether option was accepted.
  */
 static int   module_conf (const struct music_module *restrict m,
-                          const char *restrict opt,
-                          const char *restrict arg)
+                          const char *restrict opt, const char *restrict arg)
 	__attribute__((nonnull(1)));
 
 
@@ -88,6 +68,23 @@ static int   module_send (const struct music_module *restrict m,
                           const struct music_song *restrict const *restrict songs,
                           size_t *restrict errorPositions)
 	__attribute__((nonnull(1, 2)));
+
+
+
+/**
+ * Module's configuration.
+ */
+struct module_config {
+	char *url;               /**< Request's URL. */
+	char *username;          /**< User name. */
+	char password[20];       /**< SHA1 of password. */
+	time_t waitTill;         /**< Wait with submitting songs till that
+	                              moment. */
+	unsigned short lastWait; /**< How much time did we wait last time. */
+	char gotPassword;        /**< Whether password was given in
+                                   configuration file. */
+	char verbose;            /**< Whether CURL should be verbose. */
+};
 
 
 
@@ -124,78 +121,14 @@ static size_t escapeLength(const char *restrict src)
 
 
 /**
- * Callback function for libcurl.  Called when library retieved a HTTP
- * header.
- *
- * @param str array.
- * @param size size of single element.
- * @param n number of elements.
- * @param arg callback argument.
- * @return number of bytes function took care of (size*n on success).
- */
-static size_t got_header(const char *restrict str, size_t size, size_t n,
-                         void *restrict arg)
-	__attribute__((nonnull));
-
-
-/**
- * Callback function for libcurl.  Called when library retieved
- * a respons body.
- *
- * @param str array.
- * @param size size of single element.
- * @param n number of elements.
- * @param arg callback argument.
- * @return number of bytes function took care of (size*n on success).
- */
-static size_t got_body  (const char *restrict str, size_t size, size_t n,
-                         void *restrict arg)
-	__attribute__((nonnull));
-
-
-/**
- * Callback function for libcurl.  Called when library sends some
- * debug information.
- *
- * @param request CURL easy interface handler.
- * @param type message type.
- * @param data message (not zero terminated).
- * @param length message's length.
- * @param arg out_http module.
- * @return 0.
- */
-static int    got_debug (CURL *restrict request, curl_infotype type,
-                         const char *restrict data, size_t length,
-                         void *restrict arg);
-
-
-
-
-/**
- * Module's configuration.
- */
-struct module_config {
-	pthread_mutex_t mutex;  /**< Mutex used when aborting request. */
-	CURL *request;          /**< CURL object for handling HTTP requests. */
-	char *url;              /**< Request's URL. */
-	char *username;         /**< User name. */
-	char password[20];      /**< SHA1 of password. */
-	short gotPassword;      /**< Whether password was given in
-                                 configuration file. */
-	short verbose;          /**< Whether CURL should be verbose. */
-	time_t waitTill;        /**< Wait with submitting songs till that
-	                             moment. */
-	unsigned lastWait;      /**< How much time did we wait last time. */
-};
-
-
-/**
  * Module's User Agent string as sent when doing HTTP request.  This
  * is a "music-out_http/x.y libcurl/a.b.c" where x.y is module's
  * version and a.b.c is libcurl's version.  This is initalised once by
  * init().
  */
 static char userAgent[64] = "";
+
+
 
 /**
  * Headers sent while making request.
@@ -207,23 +140,20 @@ struct curl_slist headers = { (char*)"Accept: text/x-music", 0 };
 struct music_module *init(const char *restrict name,
                           const char *restrict arg) {
 	struct module_config *cfg;
-	struct music_module *const m = malloc(sizeof *m + sizeof *cfg);
+	struct music_module *const m = music_init(MUSIC_OUT, sizeof *cfg);
 	(void)name; /* supress warning */
 	(void)arg;  /* supress warning */
 
-	m->type        = MUSIC_OUT;
-	m->start       = module_start;
-	m->stop        = module_stop;
-	m->free        = module_free;
-	m->config      = module_conf;
-	m->song.send   = module_send;
-	m->retryCached = 0;
-	cfg = m->data  = m + 1;
-
-	pthread_mutex_init(&cfg->mutex, 0);
-	cfg->request = 0;
-	cfg->username = cfg->url = 0;
-	cfg->gotPassword = cfg->verbose = 0;
+	m->free          = module_free;
+	m->config        = module_conf;
+	m->song.send     = module_send;
+	cfg              = m->data;
+	cfg->username    = 0;
+	cfg->url         = 0;
+	cfg->gotPassword = 0;
+	cfg->verbose     = 0;
+	cfg->waitTill    = 0;
+	cfg->lastWait    = 0;
 
 	if (music_run_once_check((void(*)(void))curl_global_init, 0)) {
 		curl_global_init(CURL_GLOBAL_ALL);
@@ -236,49 +166,13 @@ struct music_module *init(const char *restrict name,
 		        (ver>>16) & 0xff, (ver>>8) & 0xff, ver & 0xff);
 	}
 
-
 	return m;
-}
-
-
-
-static int   module_start(const struct music_module *restrict m) {
-	struct module_config *const cfg = m->data;
-	CURL *const request = cfg->request = curl_easy_init();
-
-	if (!request) {
-		return 0;
-	}
-
-	curl_easy_setopt(request, CURLOPT_USERAGENT     , userAgent);
-	curl_easy_setopt(request, CURLOPT_WRITEFUNCTION , got_body);
-	curl_easy_setopt(request, CURLOPT_HEADERFUNCTION, got_header);
-	curl_easy_setopt(request, CURLOPT_DEBUGFUNCTION , got_debug);
-	curl_easy_setopt(request, CURLOPT_DEBUGDATA     , (void*)m);
-	curl_easy_setopt(request, CURLOPT_URL           , cfg->url);
-	curl_easy_setopt(request, CURLOPT_VERBOSE       , (long)cfg->verbose);
-	curl_easy_setopt(request, CURLOPT_STDERR        , (void*)stderr);
-	curl_easy_setopt(request, CURLOPT_HTTPHEADER    , (void*)&headers);
-	return 1;
-}
-
-
-
-static void  module_stop (const struct music_module *restrict m) {
-	struct module_config *const cfg = m->data;
-	pthread_mutex_lock(&cfg->mutex);
-	if (cfg->request) {
-		curl_easy_cleanup(cfg->request);
-		cfg->request = 0;
-	}
-	pthread_mutex_unlock(&cfg->mutex);
 }
 
 
 
 static void  module_free (struct music_module *restrict m) {
 	struct module_config *const cfg = m->data;
-	pthread_mutex_destroy(&cfg->mutex);
 	free(cfg->username);
 	free(cfg->url);
 }
@@ -351,84 +245,241 @@ static int   module_conf (const struct music_module *restrict m,
 
 
 
+
 /**
- * Adds song to POST data.  Returns number of characters it consumed
- * or zero if there were not enough room.  If pos is non-zero also an
- * ampersand will be added at the beginning.
- *
- * @param data POST data string.
- * @param pos position to put song POST data.
- * @param capacity capacity of data array.
- * @param song song to add.
- * @return number of characters string consumed or zero if there was
- *         not enough room.
+ * Structure holding data for given request.
  */
-static size_t addSong(char *restrict data, size_t pos, size_t capacity,
+struct request {
+	/** out_http module performing the request. */
+	const struct music_module *m;
+	/** CURL easy handler.  May be NULL if not yet initialised. */
+	CURL *curl;
+
+	/** Array of songs to submit. */
+	const struct music_song *restrict const *songs;
+	/** Number of handled songs. */
+	size_t handled;
+
+	/** Error informations. */
+	struct request_error {
+		/** Array where indexes of songs that failed are saved.  May
+		 *  be NULL. */
+		size_t *positions;
+		/** Number of songs that failed. */
+		size_t count;
+	} error;
+
+	/** POST data. */
+	struct request_post {
+		/** POST's data length. */
+		size_t length;
+		/** Position where accual songs starts (non zero means there
+		 *  is auth[] argument. */
+		size_t start;
+		/** POST data.  Not zero terminated. */
+		char data[10240];
+	} post;
+
+	/** State of particular request. */
+	struct request_request {
+		/** Number of songs in single request. */
+		size_t count;
+		/** Number of handled songs in single request. */
+		size_t handled;
+	} request;
+
+	/** Buffer for holding non finished lines. */
+	struct request_buffer {
+		/**
+		 * Buffer's data pointer.  We keep data in buffer NUL
+		 * terminated so that there is no need to allocate new memory
+		 * when passing bufer to request_handleLine() function.
+		 */
+		char *restrict data;
+		size_t length;       /**< Data's length (expluding NUL terminator). */
+		size_t capacity;     /**< Buffer's capacity. */
+	} buffer;
+
+	/** State of given request. */
+	enum {
+		ST_IGNORE,
+		ST_HEADER_HTTP,
+		ST_HEADER_TYPE,
+		ST_HEADER_END,
+		ST_BODY_STATUS,
+		ST_BODY_CONT,
+		ST_BODY_ERROR
+	} state;
+
+
+	enum {
+		RT_OK = 0,
+
+		RT_HTTP_INVALID,
+		RT_HTTP_300,
+		RT_HTTP_400,
+		RT_HTTP_500,
+		RT_HTTP_UNKNOWN,
+
+		RT_TYPE_UNKNOWN,
+		RT_TYPE_INVALID,
+
+		RT_MUSIC_INVALID,
+		RT_MUSIC_200,
+		RT_MUSIC_300,
+		RT_MUSIC_UNKNOWN,
+
+		RT_CURL_ERROR
+	} exitCode;
+};
+
+
+
+/**
+ * Adds <tt>auth</tt> argument to POST data.  Also sets
+ * <var>post.length</var> and <var>post.start</var> fields
+ * aproprietly.
+ *
+ * @param r request data.
+ * @param user user name.
+ * @param pass password.
+ */
+void request_addAuth (struct request *restrict r,
+                      const char *restrict user, const char *restrict pass)
+	__attribute__((nonnull));
+
+
+
+/**
+ * Adds a song to the request.  If there is not enough space in POST
+ * data buffer to add the song function will return 0.
+ *
+ * @param r request data.
+ * @param song song to add.
+ * @return whether song was succesfully added.
+ */
+int  request_addSong (struct request *restrict r,
                       const struct music_song *restrict song)
 	__attribute__((nonnull));
 
 
 
 /**
- * Request data or state.
+ * Initialises CURL easy handler.
+ *
+ * @param r request data.
  */
-struct request_data {
-	const struct music_module *m;  /**< out_http module. */
-
-	const struct music_song *restrict const *songs;  /**< Pointer to song array. */
-	size_t songPos;                /**< Position of current song. */
-	size_t count;                  /**< Number of songs in request. */
-	size_t handled;                /**< Number of songs handled by request. */
-
-	size_t *errorPositions;        /**< Array to save error positions. */
-	size_t errorPos;               /**< Number of songs that failed so far. */
-
-	char *data;      /**< Temporary storage used when got_body()
-	                      recieves part of respons which does not end
-	                      with a full line. */
-	size_t data_len; /**< Length of data. */
-
-	enum {
-		ST_IGNORE = -1,  /**< The rest of the response is to be ignored. */
-		ST_START,        /**< We're starting reading the response --
-		                      expecting "HTTP/1.x 200" header. */
-		ST_HD_TYPE,      /**< Waiting for Content-Type header. */
-		ST_HEADERS,      /**< We got HTTP status and reading headers. */
-		ST_BODY_START,   /**< We're starting reading body -- epxecting
-		                      "MUSIC <code>". */
-		ST_BODY_CONT,    /**< We're continueing to read body. */
-		ST_BODY_ERROR    /**< We're going to read error message. */
-	} state;                       /**< State we are in. */
-
-	int wait; /**< Don't do any more requests for this number of
-	               seconds.  It can be also -1 which means don't do
-	               any more requests at all. */
-};
+void request_curlInit(struct request *restrict r)  __attribute__((nonnull));
 
 
 
 /**
- * Submits songs.  Number of songs thre are in the request must be saved in
- * count element of request_data structure pointed by d.  songPos should be
- * position of the *next* song to be processed, ie. the first one being
- * processed has positon songPos - count.
+ * Performs a single HTTP request.  This function alters
+ * <var>handled</var> field of <var>request</var> structure.
  *
- * When function returns songPos will be incremented by this value and for
- * each song function faild to submit its position (where first's song's
- * position is songPos-count) will be saved in errorPositions array at
- * postion errorPos and then errorPos will be incremented.
- *
- * Function returns non zero if we can continue submitting songs.  Otherwise
- * it will return zero.  If that happens caller must not submitt any other
- * songs.
- *
- * @param data POST data.
- * @param len length of POST data.
- * @param d request state.
- * @return whether further submissions can be issued.
+ * @param r request data.
+ * @return whether module should continue performing requests.
  */
-static int  sendSongs(const char *restrict data, size_t len,
-                      struct request_data *restrict d)
+int  request_perform (struct request *restrict r)  __attribute__((nonnull));
+
+
+
+/**
+ * CURL callback called when library recieved HTTP headers.
+ *
+ * @param data data.
+ * @param size size of single element.
+ * @param n number of elements.
+ * @param arg request data (cast to <tt>void*</tt>).
+ */
+size_t request_gotHead(const char *restrict data, size_t size, size_t n,
+                       void *restrict arg)         __attribute__((nonnull));
+
+
+
+/**
+ * CURL callback called when library recieved HTTP body.
+ *
+ * @param data data.
+ * @param size size of single element.
+ * @param n number of elements.
+ * @param arg request data (cast to <tt>void*</tt>).
+ */
+size_t request_gotBody(const char *restrict data, size_t size, size_t n,
+                       void *restrict arg)         __attribute__((nonnull));
+
+
+
+/**
+ * Callback function for libcurl.  Called when library sends some
+ * debug information.
+ *
+ * @param curl CURL easy interface handler.
+ * @param type message type.
+ * @param data message (not zero terminated).
+ * @param length message's length.
+ * @param arg out_http module.
+ * @return 0.
+ */
+static int    got_debug (CURL *restrict curl, curl_infotype type,
+                         const char *restrict data, size_t length,
+                         void *restrict arg);
+
+
+
+/**
+ * Called by request_gotHead() and request_gotBody().  Extracts single
+ * line from data and handles it (calls request_handleLine()).
+ *
+ * @param data data.
+ * @param size data's length.
+ * @param r request data.
+ */
+void   request_gotData(const char *restrict data, size_t size,
+                       struct request *restrict r) __attribute__((nonnull));
+
+
+
+/**
+ * Handles single line.  If <var>nul</var> is true assumes that
+ * <var>data</var> is null terminated and referenced data can be
+ * modified.
+ *
+ * @param r request data.
+ * @param data data.
+ * @param len data's length.
+ * @param nul whether data is nul terminated and modifiable.
+ */
+int    request_handleLine(struct request *restrict r,
+                          const char *restrict data, size_t len, int nul)
+	__attribute__((nonnull));
+
+
+
+/**
+ * Handles single line when request in in <var>ST_BODY_CONT</var>
+ * state.
+ *
+ * @param r request data.
+ * @param data nul terminated data.
+ */
+int    request_handleBodyCont(struct request *restrict r,
+                              const char *restrict data)
+	__attribute__((nonnull));
+
+
+
+/**
+ * Appends buffer in request with given data.  It is used by
+ * request_gotData() when it needs to save partial line so it can
+ * reconstruct whole line next time it's called.
+ *
+ * @param r request data.
+ * @param data data.
+ * @param size data's length.
+ */
+void   request_appendBuffer(struct request *restrict r,
+                            const char *restrict data, size_t size)
 	__attribute__((nonnull));
 
 
@@ -436,487 +487,613 @@ static int  sendSongs(const char *restrict data, size_t len,
 static int    module_send (const struct music_module *restrict m,
                            const struct music_song *restrict const *restrict songs,
                            size_t *restrict errorPositions) {
+	const struct music_song *restrict const *s;
 	struct module_config *const cfg = m->data;
-	struct request_data d = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
-	size_t start = 0, pos, capacity;
-	char *data;
+	struct request *r;
+	size_t handled;
+	int ret;
 
-	if (!*songs) return 0;
+	if (!*songs) {
+		return 0;
+	}
 
-	pthread_mutex_lock(&cfg->mutex);
-	if (!cfg->request ||
-		(cfg->waitTill && cfg->waitTill>time(0)) ||
-		!(data = malloc(capacity = 10224))) {
-		pthread_mutex_unlock(&cfg->mutex);
+	if (cfg->waitTill && cfg->waitTill>time(0)) {
 		return -1;
 	}
-	cfg->waitTill = 0;
 
-	d.m = m;
-	d.songs = songs;
-	d.errorPositions = errorPositions;
+	if (!(r = malloc(sizeof *r))) {
+		return -1;
+	}
+	r->m = m;
+	r->songs = s = songs;
+	r->error.positions = errorPositions;
+	r->handled = r->error.count = r->request.count = r->request.handled = 0;
+	r->buffer.length = r->buffer.capacity = 0;
+	r->buffer.data = 0;
+	r->curl = 0;
 
-	/* Authentication */
 	if (cfg->username) {
-		time_t t = time(0);
-		size_t l;
-		start = sprintf(data, "auth=pass:%s:%lx:", cfg->username,
-		                (unsigned long)t);
-		memcpy((uint8_t*)data+start+30, cfg->password, 20);
-		l = 20 + sprintf(data + start + 50, "%lx", (unsigned long)t);
-
-		sha1_b64(data + start, (uint8_t*)data + start + 30, l);
-		start += 27;
-	}
-
-
-	/* Do */
-	curl_easy_setopt(cfg->request, CURLOPT_WRITEDATA    , (void*)&d);
-	curl_easy_setopt(cfg->request, CURLOPT_WRITEHEADER  , (void*)&d);
-
-	pos = start;
-	for (; songs[d.songPos]; ++d.songPos) {
-		const struct music_song *const song = songs[d.songPos];
-		size_t add = d.count < 32 ? addSong(data, pos, capacity, song) : 0;
-
-		if (!add && d.count) {
-			d.data_len = 0;
-			if (!sendSongs(data, pos, &d)) break;
-
-			pos = start;
-			d.count = 0;
-			add = addSong(data, pos, capacity, song);
-		}
-
-		if (add) {
-			++d.count;
-			pos += add;
-		} else {
-			music_log(m, LOG_WARNING, "song name too long (will not submit): "
-			                          "%s <%s> %s",
-			          song->artist ? song->artist : "(empty)",
-			          song->album  ? song->album  : "(empty)",
-			          song->title  ? song->title  : "(empty)");
-		}
-	}
-
-	/* Send any pending songs */
-	if (d.count) {
-		sendSongs(data, pos, &d);
-	}
-
-	free(data);
-	free(d.data);
-
-	pthread_mutex_unlock(&cfg->mutex);
-
-	/* Mark rest as invalid */
-	if (errorPositions) {
-		while (d.songPos < d.count) {
-			errorPositions[d.errorPos++] = d.songPos++;
-		}
+		request_addAuth(r, cfg->username, cfg->password);
 	} else {
-		d.errorPos += d.count - d.songPos;
+		r->post.length = r->post.start = 0;
 	}
 
-	return d.errorPos;
+	do {
+		if (request_addSong(r, *s)) {
+			++s;
+		} else if (!r->request.count) {
+			music_log(r->m, LOG_WARNING,
+			          "Song name too long '%s <%s> %s'",
+			          (*s)->artist ? (*s)->artist : "(empty)",
+			          (*s)->album  ? (*s)->album  : "(empty)",
+			          (*s)->title  ? (*s)->title  : "(empty)");
+			++s;
+		} else if (!request_perform(r)) {
+			break;
+		}
+	} while (*s);
+
+	if (r->request.count) {
+		request_perform(r);
+	}
+
+	if (r->curl) {
+		curl_easy_cleanup(r->curl);
+		r->curl = 0;
+	}
+
+	free(r->buffer.data);
+
+	ret = r->error.count;
+	handled = r->handled;
+	free(r);
+
+	if (*s) {
+		if (errorPositions) {
+			do errorPositions[ret++] = handled++; while (*++s);
+		} else {
+			while (*++s) ++ret;
+		}
+	}
+
+	return ret;
 }
 
 
 
-static size_t addSong(char *restrict data, size_t pos, size_t capacity,
-                      const struct music_song *restrict song) {
-	const size_t orgPos = pos;
+void request_addAuth(struct request *restrict r,
+                     const char *restrict user, const char *restrict pass) {
+	char *const data = r->post.data;
+	unsigned long t = time(0);
+	size_t pos, len;
 
-	if (capacity - pos < 13) {
+	pos = sprintf(data, "auth=pass:%s:%lx:", user, t);
+	memcpy(data + pos + 30, pass, 20);
+	len = 20 + sprintf(data + pos + 50, "%lx", t);
+	sha1_b64(data + pos, (unsigned char *)data + pos + 30, len);
+	r->post.start = r->post.length = pos + 27;
+}
+
+
+
+int  request_addSong(struct request *restrict r,
+                     const struct music_song *restrict song) {
+	size_t i = r->post.length, capacity = sizeof(r->post.data) - i;
+	char *data = r->post.data + i;
+
+	if (capacity < 13) {
 		return 0;
 	}
 
 	/* Field name */
-	{
-		unsigned addAmp = !!pos;
-		memcpy(data + pos, "&song[]=" + !addAmp, 7 + addAmp);
-		pos  += 7 + addAmp;
-	}
+	i = i ? 8 : 7;
+	memcpy(data, "&song[]=" + 8 - i, i);
+	data += i; capacity -= i;
 
 	/* String arguments */
 	{
-		size_t i = 0;
 		const char *arr[4];
 		arr[0] = song->title;
 		arr[1] = song->artist;
 		arr[2] = song->album;
 		arr[3] = song->genre;
 
+		i = 0;
 		do {
-			size_t add = 0;
-			if (arr[i]) add = escape(data+pos, arr[i], capacity-pos);
-			pos += add;
-			if (pos+1>=capacity) return 0;
-			data[pos++] = ':';
+			const size_t add = arr[i] ? escape(data, arr[i], capacity) : 0;
+			if (add+1>=capacity) return 0;
+			data[add] = ':';
+			data += add + 1; capacity -= add - 1;
 		} while (++i<4);
 	}
 
 	/* Numeric arguemnts */
 	{
-		int ret = snprintf(data+pos, capacity-pos, "%lx:%lx",
-		                   (unsigned long)song->length,
+		int ret = snprintf(data, capacity, "%x:%lx", song->length,
 		                   (unsigned long)song->endTime);
-		if (ret<0 || (unsigned)ret>=capacity-pos) {
+		if (ret<0 || (size_t)ret>capacity) {
 			return 0;
 		}
-		pos += (size_t)ret;
+		data += (size_t)ret;
 	}
 
-	return pos - orgPos;
-}
-
-
-static int  sendSongs(const char *restrict data, size_t len,
-                      struct request_data *restrict d) {
-	struct module_config *const cfg = d->m->data;
-	CURL *const request = cfg->request;
-
-	music_log(d->m, LOG_DEBUG - 2, "sendSongs()");
-
-	d->songPos -= d->count;
-	d->handled = 0;
-	d->state = ST_START;
-	d->wait = 0;
-	curl_easy_setopt(request, CURLOPT_POSTFIELDS   , data);
-	curl_easy_setopt(request, CURLOPT_POSTFIELDSIZE, (long)len);
-	if (curl_easy_perform(request)) {
-		d->wait = 60;
-	}
-	d->songPos += d->handled;
-
-	if (d->errorPositions) {
-		for (d->count -= d->handled; d->count; --d->count) {
-			d->errorPositions[d->errorPos++] = d->songPos++;
-		}
-	} else {
-		d->count    -= d->handled;
-		d->songPos  += d->count;
-		d->errorPos += d->count;
-	}
-
-	if (d->wait<0) {
-		curl_easy_cleanup(request);
-		cfg->request = 0;
-		music_log(d->m, LOG_ERROR, "Won't submit songs any longer.");
-		return 0;
-	} else if (d->wait) {
-		unsigned wait = cfg->lastWait;
-		if (wait<(unsigned)d->wait) {
-			wait = d->wait;
-		} else if (wait < 15 * 60) {
-			wait *= 2;
-		}
-		cfg->lastWait = wait;
-		music_log(d->m, LOG_NOTICE, "Won't submit songs for %u seconds.",
-		          wait);
-		cfg->waitTill = time(0) + wait;
-		return 0;
-	} else {
-		cfg->lastWait = 0;
-	}
+	r->post.length = data - r->post.data;
+	++r->request.count;
 	return 1;
 }
 
 
 
-/****************************** Handle request ******************************/
-/**
- * Extracts and handles single line from reply.
- *
- * This function starts parsing of data starting from position pointed
- * by pos.  Also, if whole line was parsed position of next line is
- * stored in location pointed by pos.  This way calling function can
- * check if there are any other lines to parse (ie. when location
- * pointed by pos stores other value then size) and if it is a whole
- * line (ie. when there are still characters but function returns 0).
- *
- * @param str  data string.
- * @param size number of characters in response.
- * @param d    request state.
- * @param pos  starting position of line and here is written starting
- *             position of next line.
- * @return whether line was sucessfully extracted.
- */
-static int parse_reply_line(const char *restrict str, size_t size,
-                            struct request_data *restrict d,
-                            size_t *restrict pos)
-	__attribute__((nonnull(1,3)));
+void request_curlInit(struct request *restrict r) {
+	CURL *const curl = r->curl = curl_easy_init();
+	struct module_config *const cfg = r->m->data;
+	curl_easy_setopt(curl, CURLOPT_USERAGENT     , userAgent);
+	curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION , request_gotBody);
+	curl_easy_setopt(curl, CURLOPT_WRITEDATA     , (void*)r);
+	curl_easy_setopt(curl, CURLOPT_HEADERFUNCTION, request_gotHead);
+	curl_easy_setopt(curl, CURLOPT_WRITEHEADER   , (void*)r);
+	curl_easy_setopt(curl, CURLOPT_URL           , cfg->url);
+	curl_easy_setopt(curl, CURLOPT_HTTPHEADER    , (void*)&headers);
+	if (cfg->verbose) {
+		curl_easy_setopt(curl, CURLOPT_DEBUGFUNCTION , got_debug);
+		curl_easy_setopt(curl, CURLOPT_DEBUGDATA     , (void*)r->m);
+		curl_easy_setopt(curl, CURLOPT_VERBOSE       , 1L);
+	}
+}
 
 
 
-/**
- * Handles single line from reply.  This function parses a line of reply
- * which begins at str and is length character long.
- *
- * @param str    line starting position.
- * @param length line's length.
- * @param d      request state.
- */
-static void handle_reply_line(const char *restrict str, size_t length,
-                              struct request_data *restrict d)
-	__attribute__((nonnull));
+int  request_perform(struct request *restrict r) {
+	static const unsigned short waitTab[][2] = {
+		{ 000,     0 }, /* RT_OK */
 
+		{ 900,  1800 }, /* RT_HTTP_INVALID */
+		{ 600,  3600 }, /* RT_HTTP_300 */
+		{ 900,  3600 }, /* RT_HTTP_400 */
+		{ 300,  1800 }, /* RT_HTTP_500 */
+		{ 900,  1800 }, /* RT_HTTP_UNKNOWN */
 
+		{ 600,  3600 }, /* RT_TYPE_UNKNOWN */
+		{ 600,  3600 }, /* RT_TYPE_INVALID */
 
-static int parse_reply_line(const char *restrict str, size_t size,
-                            struct request_data *restrict d,
-                            size_t *restrict pos) {
-	const char *start = str + (pos ? *pos : 0);
-	const char *ch = start, *const end = str + size;
-	size_t length;
+		{ 600,  1800 }, /* RT_MUSIC_INVALID */
+		{ 300,  1800 }, /* RT_MUSIC_200 */
+		{ 900,  3600 }, /* RT_MUSIC_300 */
+		{ 600,  1800 }, /* RT_MUSIC_UNKNOWN */
 
-	/* Skip white space */
-	while (ch!=end && (*ch==' ' || *ch=='\t' || *ch=='\v' || *ch=='\f')) ++ch;
-	start = ch;
+		{ 900,  1800 }, /* RT_CURL_ERRO */
+	};
 
-	/* Find end of line */
-	while (ch!=end && *ch!='\r' && *ch!='\n') ++ch;
-	length = ch - start;
+	struct module_config *const cfg = r->m->data;
+	unsigned wait;
+	CURLcode code;
 
-	/* "Premature" EOL */
-	if (ch==end) {
-		return 0;
+	/* Intialise CURL */
+	if (!r->curl) {
+		request_curlInit(r);
 	}
 
-	/* Save position of next line */
-	if (pos) {
-		if (*ch++=='\r' && ch!=end && *ch=='\n') ++ch;
-		*pos = ch - str;
+	/* Zero state */
+	r->state           = ST_HEADER_HTTP;
+	r->exitCode        = RT_OK;
+	r->request.handled = 0;
+	r->buffer.length   = 0;
+
+	/* Set POST data */
+	curl_easy_setopt(r->curl, CURLOPT_POSTFIELDS   , r->post.data);
+	curl_easy_setopt(r->curl, CURLOPT_POSTFIELDSIZE, (long)r->post.length);
+
+	/* Perform */
+	code = curl_easy_perform(r->curl);
+	if (code!=CURLE_OK) {
+		music_log(r->m, LOG_ERROR, "CURL: %s", curl_easy_strerror(code));
+		r->exitCode = RT_CURL_ERROR;
 	}
 
-	/* Skip empty lines */
-	if (!length) {
+	/* Handle unhandled */
+	if (r->request.count == r->request.handled) {
+		/* do nothing */
+	} else if (!r->error.positions) {
+		r->error.count += r->request.count - r->request.handled;
+	} else {
+		size_t *const err = r->error.positions;
+		size_t pos   = r->error.count;
+		size_t count = r->request.count - r->request.handled;
+		size_t hand  = r->handled;
+		do {
+			err[pos++] = hand++;
+		} while (--count);
+		r->error.count = pos;
+	}
+
+	/* Finalize */
+	r->handled        += r->request.count;
+	r->request.count   = 0;
+	r->request.handled = 0;
+	r->buffer.length   = 0;
+
+	/* Analise exit code */
+	if (r->exitCode==RT_OK) {
+		cfg->lastWait = 0;
+		cfg->waitTill = 0;
 		return 1;
 	}
 
-	/* Handle */
-	handle_reply_line(start, length, d);
+	wait = waitTab[r->exitCode][0] <= cfg->lastWait
+		? cfg->lastWait : waitTab[r->exitCode][0];
+	wait <<= 1;
+	wait = wait <= waitTab[r->exitCode][1]
+		? wait : waitTab[r->exitCode][1];
+
+	cfg->lastWait = wait;
+	music_log(r->m, LOG_NOTICE, "Won't submit songs for next %u seconds.",
+	          wait);
+	cfg->waitTill = time(0) + wait;
+	return 0;
+}
+
+
+
+size_t request_gotHead(const char *restrict data, size_t size, size_t n,
+                       void *restrict arg) {
+	struct request *const r = arg;
+
+	size *= n;
+	switch (r->state) {
+	case ST_IGNORE:
+	case ST_HEADER_END:
+	case ST_BODY_STATUS:
+	case ST_BODY_CONT:
+	case ST_BODY_ERROR:
+		break;
+
+	case ST_HEADER_HTTP:
+	case ST_HEADER_TYPE:
+		request_gotData(data, size, r);
+	}
+
+	return size;
+}
+
+
+
+size_t request_gotBody(const char *restrict data, size_t size, size_t n,
+                       void *restrict arg) {
+	struct request *const r = arg;
+
+	size *= n;
+	switch (r->state) {
+	case ST_IGNORE:
+		break;
+
+	case ST_HEADER_HTTP:
+		music_log(r->m, LOG_ERROR, "No HTTP response before response body.");
+		r->state    = ST_IGNORE;
+		r->exitCode = RT_HTTP_INVALID;
+		break;
+
+	case ST_HEADER_TYPE:
+		music_log(r->m, LOG_ERROR, "No Content-Type header.");
+		r->state    = ST_IGNORE;
+		r->exitCode = RT_TYPE_UNKNOWN;
+		break;
+
+	case ST_HEADER_END:
+		r->state = ST_BODY_STATUS;
+		/* FALL THROUGH */
+	case ST_BODY_STATUS:
+	case ST_BODY_CONT:
+	case ST_BODY_ERROR:
+		request_gotData(data, size, r);
+		break;
+	}
+
+	return size;
+}
+
+
+
+void   request_gotData(const char *restrict data, size_t size,
+                       struct request *restrict r) {
+	const char *ch = data, *const end = data + size;
+
+	do {
+		const char *const line = ch;
+
+		while (ch!=end && *ch!='\r' && *ch!='\n') ++ch;
+		if (ch==end) {
+			request_appendBuffer(r, data, size);
+			break;
+		}
+
+		if (r->buffer.length) {
+			int ret;
+			request_appendBuffer(r, data, ch - data);
+			ret = request_handleLine(r, r->buffer.data, r->buffer.length, 1);
+			r->buffer.length = 0;
+			if (!ret) break;
+		} else if (!request_handleLine(r, line, ch - line, 0)) {
+			break;
+		}
+
+		if (*ch++ == '\r' && ch != end && *ch == '\n') {
+			++ch;
+		}
+
+	} while (ch!=end);
+}
+
+
+
+void   request_appendBuffer(struct request *restrict r,
+                            const char *restrict data, size_t size) {
+	size_t len  = r->buffer.length + size + 1;
+	size_t need = ((len + 16 + 127) & ~(size_t)127) - 16;
+
+	if (need < r->buffer.capacity) {
+		r->buffer.data = realloc(r->buffer.data, need);
+		r->buffer.capacity = need;
+	}
+
+	memcpy(r->buffer.data + r->buffer.length, data, size);
+	r->buffer.data[r->buffer.length += size] = 0;
+}
+
+
+
+/**
+ * Check if first string starts with the second one ignoring the case.
+ * The second string must be <b>all lower case</b> or else the
+ * comparison may give false negative answers.
+ *
+ * @param str string to check prefix.
+ * @param pre the prefix.
+ * @return whether strings starts with prefix ignoring case.
+ */
+static int string_starts(const char *restrict str, const char *restrict pre)
+	__attribute__((nonnull));
+
+static int string_starts(const char *restrict str, const char *restrict pre){
+	while (*pre) {
+		char s = *str++, p = *pre++;
+		if (isupper(s)) {
+			s = tolower(s);
+		}
+		if (s!=p) {
+			return 0;
+		}
+	}
 	return 1;
 }
 
 
 
-static void handle_reply_line(const char *restrict str, size_t length,
-                              struct request_data *restrict d) {
-	char *const line = malloc(length + 1);
+int    request_handleLine(struct request *restrict r,
+                          const char *restrict data, size_t len, int nul) {
+	char *malloced = 0;
+	int ret = 1, pos;
+	unsigned num;
+
+	while (len && isspace(*data)) {
+		++data;
+		--len;
+	}
+
+	while (len && isspace(data[len-1])) {
+		--len;
+	}
+
+	if (!len) {
+		return 1;
+	}
+
+	if (nul) {
+		((char *)data)[len] = 0;
+	} else {
+		malloced = malloc(len + 1);
+		memcpy(malloced, data, len);
+		malloced[len] = 0;
+		data = malloced;
+	}
+
+
+
+	switch (r->state) {
+		/* Ignore; we should never get here honestly */
+	case ST_IGNORE:
+		break;
+
+
+		/* Waiting for HTTP status line (HTTP/x.y ### <...>) */
+	case ST_HEADER_HTTP:
+		if (sscanf(data, " HTTP/%*u.%*u %u %n", &num, &pos)<1) {
+			music_log(r->m, LOG_ERROR, "Invalid HTTP status line: %s", data);
+			r->exitCode = RT_HTTP_INVALID;
+			r->state    = ST_IGNORE;
+			ret         = 0;
+			break;
+		}
+
+		switch (num / 100) {
+		case  2:
+			r->state = ST_HEADER_TYPE;
+			goto finish; /* escape 2 switches */
+
+		case  3: r->exitCode = RT_HTTP_300    ; break;
+		case  4: r->exitCode = RT_HTTP_400    ; break;
+		case  5: r->exitCode = RT_HTTP_500    ; break;
+		default: r->exitCode = RT_HTTP_UNKNOWN; break;
+		}
+
+		music_log(r->m, LOG_ERROR, "HTTP status: %u %s",  num, data + pos);
+		r->state = ST_IGNORE;
+		ret = 0;
+		break;
+
+
+		/* Waiting for Content-Type header */
+	case ST_HEADER_TYPE:
+		if (!string_starts(data, "content-type:")) {
+			break;
+		}
+
+		for (data += 13; isspace(*data); ++data);
+		if (!string_starts(data, "text/x-music")) {
+			music_log(r->m, LOG_ERROR, "Invalid content-type: %s", data);
+			r->exitCode = RT_TYPE_INVALID;
+			r->state    = ST_IGNORE;
+			ret         = 0;
+			break;
+		}
+
+		r->state = ST_HEADER_END;
+		break;
+
+
+		/* Ignore the rest of headers; we should never get here honestly */
+	case ST_HEADER_END:
+		break;
+
+
+		/* Wait for music status (MUSIC ### <...>) */
+	case ST_BODY_STATUS:
+		if (sscanf(data, "MUSIC %u %n", &num, &pos)<1) {
+			music_log(r->m, LOG_ERROR, "Invalid Music status line: %s", data);
+			r->exitCode = RT_MUSIC_INVALID;
+			r->state    = ST_IGNORE;
+			ret         = 0;
+			break;
+		}
+
+		switch (num/100) {
+		case  1:
+			r->state = ST_BODY_CONT;
+			goto finish; /* escape 2 switches */
+
+		case  2: r->exitCode = RT_MUSIC_200    ; break;
+		case  3: r->exitCode = RT_MUSIC_300    ; break;
+		default: r->exitCode = RT_MUSIC_UNKNOWN; break;
+		}
+
+
+		music_log(r->m, LOG_ERROR, "Music status: %u %s",  num, data + pos);
+		r->state = ST_BODY_ERROR;
+		ret = 0;
+		break;
+
+
+		/* Parse body */
+	case ST_BODY_CONT:
+		ret = request_handleBodyCont(r, data);
+		break;
+
+
+		/* Read error message */
+	case ST_BODY_ERROR:
+		music_log(r->m, LOG_NOTICE, "Server error message: %s", data);
+		r->state = ST_IGNORE;
+		ret = 0;
+		break;
+	}
+
+
+ finish:
+	free(malloced);
+	return ret;
+}
+
+
+
+
+int    request_handleBodyCont(struct request *restrict r,
+                              const char *restrict data) {
+	const struct music_song *restrict const *s;
+	size_t base, handled;
 	unsigned num;
 	int pos;
 
-	memcpy(line, str, length);
-	line[length] = 0;
 
+	if (!strcmp(data, "END")) {
+		r->state = ST_IGNORE;
+		return 1;
+	}
 
-	switch (d->state) {
-	case ST_START:
-		if (sscanf(line, "HTTP/%*u.%*u %u %n", &num, &pos)<1) {
-			music_log(d->m, LOG_ERROR, "expected HTTP status not: %s", line);
-			d->state = ST_IGNORE;
-			d->wait  = 60;
-		} else if (num!=200) {
-			music_log(d->m, LOG_NOTICE, "HTTP status: %u %s", num, line+pos);
-			d->state = ST_IGNORE;
-			d->wait  = 60;
-		} else {
-			d->state = ST_HD_TYPE;
-		}
-		break;
+	if (sscanf(data, "SONG %u %n", &num, &pos)<1) {
+		music_log(r->m, LOG_DEBUG, "ignoring line: %s", data);
+		return 1;
+	}
+	data += pos;
 
-
-	case ST_HD_TYPE: {
-		char *ch;
-		if (strncmp(line, "Content-Type:", 13)) {
-			break;
-		}
-
-		for (ch = line + 13; isspace(*ch); ++ch);
-		if (!strncmp(ch, "text/x-music", 12)
-		    && (!ch[12] || ch[12]==';' || ch[12]==',' || isspace(ch[12]))) {
-			d->state = ST_HEADERS;
-		} else {
-			music_log(d->m, LOG_NOTICE, "Invalid content type: %s", ch);
-			d->state = ST_IGNORE;
-			d->wait  = 60;
-		}
-
-		break;
+	handled = r->request.handled;
+	if (num < handled || num > r->request.count) {
+		music_log(r->m, LOG_DEBUG, "ignoring line: %s", data);
+		return 1;
 	}
 
 
-	case ST_BODY_START:
-		if (sscanf(line, "MUSIC %u %n", &num, &pos)<1) {
-			music_log(d->m, LOG_ERROR,
-			          "expected server status not: %s", line);
-			d->state = ST_IGNORE;
-			d->wait  = 60;
-		} else if (num/100!=1) {
-			music_log(d->m, LOG_NOTICE, "Server status: %u %s", num,line+pos);
-			d->state = ST_BODY_ERROR;
-			d->wait = num/100==2 ? -1 : 60;
+	base = r->handled;
+	s = r->songs + base;
+	do {
+		const char *msg;
+		int log, err;
+
+		if (handled < num) {
+			data += 0;
+			msg   = "Missing status line for '%s <%s> %s'";
+			log   = LOG_WARNING;
+			err   = 1;
+		} else if (!strcmp(data, "OK")) {
+			data += 0;
+			msg   = "Song '%s <%s> %s' added.";
+			log   = LOG_DEBUG;
+			err   = 0;
+		} else if (!strcmp(data, "REJ")) {
+			data += 3;
+			msg   = "Song '%s <%s> %s' rejected:%s";
+			log   = LOG_WARNING;
+			err   = 0;
+		} else if (!strcmp(data, "FAIL")) {
+			data += 4;
+			msg   = "Error when adding '%s <%s> %s':%s";
+			log   = LOG_NOTICE;
+			err   = 1;
 		} else {
-			d->state = ST_BODY_CONT;
-		}
-		break;
-
-
-	case ST_BODY_CONT: {
-		const char *message;
-		int logLevel;
-
-		if (!strcmp(line, "END")) {
-			d->state = ST_IGNORE;
-			break;
+			data += 0;
+			msg   = "Unknown status when adding '%s <%s> %s': %s";
+			log   = LOG_NOTICE;
+			err   = 1;
 		}
 
-		if (sscanf(line, "SONG %u %n", &num, &pos)<1) {
-			music_log(d->m, LOG_DEBUG, "ignoring line: %s", line);
-			break;
-		}
+		music_log(r->m, log, msg,
+		          (*s)->artist ? (*s)->artist : "(empty)",
+		          (*s)->album  ? (*s)->album  : "(empty)",
+		          (*s)->title  ? (*s)->title  : "(empty)", data);
 
-		if (num<d->handled || num>d->count) {
-			break;
-		}
-
-		while (d->handled < num) {
-			d->errorPositions[d->errorPos++] = d->songPos + d->handled++;
-		}
-
-		num += d->songPos;
-		if (!strcmp(line+pos, "OK")) {
-			message = "Song '%s <%s> %s' added.";
-			logLevel = LOG_DEBUG;
-		} else if (!strcmp(line+pos, "REJECTED")) {
-			pos += 8;
-			message = "Song '%s <%s> %s' rejected:%s";
-			logLevel = LOG_WARNING;
-		} else if (!strcmp(line+pos, "FAILED")) {
-			d->errorPositions[d->errorPos++] = num;
-			pos += 6;
-			message = "Error when adding '%s <%s> %s':%s";
-			logLevel = LOG_NOTICE;
+		if (!err) {
+			/* do nothing */
+		} else if (r->error.positions) {
+			r->error.positions[r->error.count++] = base + num;
 		} else {
-			d->errorPositions[d->errorPos++] = num;
-			message = "Unknown status when adding '%s <%s> %s': %s";
-			logLevel = LOG_NOTICE;
+			++r->error.count;
 		}
 
-		++d->handled;
-		music_log(d->m, logLevel, message,
-		          d->songs[num]->artist ? d->songs[num]->artist : "(empty)",
-		          d->songs[num]->album  ? d->songs[num]->album  : "(empty)",
-		          d->songs[num]->title  ? d->songs[num]->title  : "(empty)",
-		          line + pos);
-		break;
-	}
+		++s;
+	} while (++handled <= num);
 
 
-	case ST_BODY_ERROR:
-		music_log(d->m, LOG_NOTICE, "Server error message: %s", line);
-		d->state = ST_IGNORE;
-		break;
-
-
-	case ST_IGNORE:
-	case ST_HEADERS:
-		/* We should never be here since this should be checked by
-		   got_body and got_header functions. */
-		break;
-	}
-
-
-	/* Free our buffer and return */
-	free(line);
+	r->request.handled = handled;
+	return 1;
 }
 
 
 
-static size_t got_header(const char *restrict str, size_t size, size_t n,
-                         void *restrict arg) {
-	struct request_data *const d = arg;
-	size *= n;
-
-	if (d->state!=ST_IGNORE && d->state<ST_HD_TYPE) {
-		parse_reply_line(str, size, d, 0);
-	}
-	return size;
-}
-
-
-static size_t got_body  (const char *restrict str, size_t size, size_t n,
-                         void *restrict arg) {
-	struct request_data *const d = arg;
-	size_t pos = 0;
-	size *= n;
-
-	/* This should never happen really, but in general we should check. */
-	if (d->state==ST_START) {
-		music_log(d->m, LOG_ERROR, "Got body without headers?");
-		d->state = ST_IGNORE;
-		d->wait  = 60;
-		return size;
-	}
-	if (d->state==ST_HD_TYPE) {
-		music_log(d->m, LOG_ERROR, "Missing Content-Type header");
-		d->state = ST_IGNORE;
-		d->wait  = 60;
-		return size;
-	}
-	if (d->state==ST_IGNORE) {
-		return size;
-	}
-	if (d->state < ST_BODY_START) {
-		d->state = ST_BODY_START;
-	}
-
-	if (d->data_len) {
-		const char *ch = str, *const end = str + size;
-		int found;
-
-		while (ch!=end && *ch!='\r' && *ch!='\n') ++ch;
-		if ((found = ch!=end)) {
-			++ch;
-		}
-
-		d->data = realloc(d->data, d->data_len + size);
-		memcpy(d->data + d->data_len, str, size);
-		d->data_len += size;
-
-		if (!found) {
-			return size;
-		}
-
-		parse_reply_line(d->data, d->data_len, d, 0);
-		free(d->data);
-		d->data_len = 0;
-		pos = ch - str;
-	}
-
-	while (d->state!=ST_IGNORE && parse_reply_line(str, size, d, &pos));
-
-	if (d->state!=ST_IGNORE && pos!=size) {
-		d->data = realloc(d->data, d->data_len = size - pos);
-		memcpy(d->data, str+pos, size-pos);
-	}
-
-	return size;
-}
-
-
-
-
-/****************************** Escape ******************************/
 /**
  * Tells whether character needs to be escaped.
  *
  * @param ch character to chec.
  * @return 1 if charactr needs to be escaped, 0 otherwise.
  */
-static __inline__ int escape_char(unsigned char ch) {
+static inline int escape_char(unsigned char ch) {
 	return ch < 0x30 || (ch > 0x39 && ch < 0x41) || ch > 0x7f;
 }
 
@@ -956,8 +1133,8 @@ static size_t escapeLength(const char *src) {
 
 
 
-/****************************** Debugging ******************************/
-static int    got_debug (CURL *restrict request, curl_infotype type,
+
+static int    got_debug (CURL *restrict curl, curl_infotype type,
                          const char *restrict data, size_t length,
                          void *restrict arg) {
 	static const char *const types[CURLINFO_END] = {
@@ -974,7 +1151,7 @@ static int    got_debug (CURL *restrict request, curl_infotype type,
 	size_t cap = 0, len;
 	char *str = 0;
 
-	(void)request;
+	(void)curl;
 
 	ch = data;
 	do {
