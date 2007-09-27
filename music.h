@@ -1,6 +1,6 @@
 /*
  * "Listening to" daemon header file
- * $Id: music.h,v 1.13 2007/09/26 22:24:20 mina86 Exp $
+ * $Id: music.h,v 1.14 2007/09/27 21:37:41 mina86 Exp $
  * Copyright (c) 2007 by Michal Nazarewicz (mina86/AT/mina86.com)
  *
  * This program is free software; you can redistribute it and/or modify
@@ -324,7 +324,7 @@ int   music_config(const struct music_module *restrict m,
                    const struct music_option *restrict options,
                    const char *restrict opt, const char *restrict arg,
                    int req)
-	__attribute__((nonnull, visibility("default")));
+	__attribute__((nonnull, visibility("default"), warn_unused_result, pure));
 
 
 
@@ -351,7 +351,7 @@ void  music_song  (const struct music_module *restrict m,
  * @return duplicated string.
  */
 char *music_strdup_realloc(char *restrict old, const char *restrict str)
-	__attribute__((nonnull(2), visibility("default")));
+	__attribute__((nonnull(2), visibility("default"), warn_unused_result));
 
 
 
@@ -423,7 +423,7 @@ void music_retry_cached(const struct music_module *restrict m)
  *          arguments.
  */
 int  music_run_once_check(void (*func)(void), void *restrict arg)
-	__attribute__((nonnull(1), visibility("default")));
+	__attribute__((nonnull(1), visibility("default"), warn_unused_result));
 
 
 
@@ -440,7 +440,8 @@ int  music_run_once_check(void (*func)(void), void *restrict arg)
  */
 struct music_module *music_init(enum music_module_type type,
                                 size_t cfgSize)
-	__attribute__((nonnull, visibility("default")));
+	__attribute__((nonnull, visibility("default"), malloc,
+	               warn_unused_result));
 
 
 
@@ -456,7 +457,7 @@ struct music_module *music_init(enum music_module_type type,
  * @return an initialised music_module structure or NULL on error.
  */
 struct music_module *init(const char *restrict name, const char *restrict arg)
-	__attribute__((nonnull, visibility("default")));
+	__attribute__((nonnull, visibility("default"), warn_unused_result));
 #endif
 
 

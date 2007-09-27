@@ -1,6 +1,6 @@
 /*
  * "Listening to" daemon MPD input module
- * $Id: out_http.c,v 1.9 2007/09/27 14:26:40 mina86 Exp $
+ * $Id: out_http.c,v 1.10 2007/09/27 21:37:41 mina86 Exp $
  * Copyright (c) 2007 by Michal Nazarewicz (mina86/AT/mina86.com)
  *
  * This program is free software; you can redistribute it and/or modify
@@ -116,7 +116,7 @@ static size_t escape(char *restrict dest, const char *restrict src, size_t n)
  * @return length of escaped string.
  */
 static size_t escapeLength(const char *restrict src)
-	__attribute__((nonnull));
+	__attribute__((nonnull, pure));
 
 
 
@@ -423,7 +423,7 @@ size_t request_gotBody(const char *restrict data, size_t size, size_t n,
  */
 static int    got_debug (CURL *restrict curl, curl_infotype type,
                          const char *restrict data, size_t length,
-                         void *restrict arg);
+                         void *restrict arg)       __attribute__((nonnull));
 
 
 
@@ -851,7 +851,7 @@ void   request_appendBuffer(struct request *restrict r,
  * @return whether strings starts with prefix ignoring case.
  */
 static int string_starts(const char *restrict str, const char *restrict pre)
-	__attribute__((nonnull));
+	__attribute__((nonnull, pure));
 
 static int string_starts(const char *restrict str, const char *restrict pre){
 	while (*pre) {
@@ -1093,6 +1093,8 @@ int    request_handleBodyCont(struct request *restrict r,
  * @param ch character to chec.
  * @return 1 if charactr needs to be escaped, 0 otherwise.
  */
+static inline int escape_char(unsigned char ch)
+	__attribute__((always_inline));
 static inline int escape_char(unsigned char ch) {
 	return ch < 0x30 || (ch > 0x39 && ch < 0x41) || ch > 0x7f;
 }

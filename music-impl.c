@@ -1,6 +1,6 @@
 /*
  * "Listening to" daemon library functions implementation
- * $Id: music-impl.c,v 1.10 2007/09/27 14:26:24 mina86 Exp $
+ * $Id: music-impl.c,v 1.11 2007/09/27 21:37:41 mina86 Exp $
  * Copyright (c) 2007 by Michal Nazarewicz (mina86/AT/mina86.com)
  *
  * This program is free software; you can redistribute it and/or modify
@@ -53,7 +53,8 @@
  */
 static void music_log_internal(const struct music_module *restrict m,
                                unsigned level, const char *restrict fmt,
-                               va_list ap, int errStr);
+                               va_list ap, int errStr)
+	__attribute__((nonnull));
 
 
 
@@ -90,7 +91,7 @@ static void music_log_internal_do(FILE *restrict stream,
                                   const char *restrict name,
                                   const char *restrict fmt, va_list ap,
                                   const char *restrict error)
-	__attribute__((nonnull(1,2,3)));
+	__attribute__((nonnull(1,2,3,4)));
 
 
 

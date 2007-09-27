@@ -1,6 +1,6 @@
 /*
  * "Listening to" daemon MPD input module
- * $Id: in_mpd.c,v 1.11 2007/09/26 22:23:53 mina86 Exp $
+ * $Id: in_mpd.c,v 1.12 2007/09/27 21:37:41 mina86 Exp $
  * Copyright (c) 2007 by Michal Nazarewicz (mina86/AT/mina86.com)
  *
  * This program is free software; you can redistribute it and/or modify
@@ -199,7 +199,7 @@ static mpd_Connection *module_do_connect(const struct music_module *restrict m)
  */
 
 static void module_do_songs(const struct music_module *restrict m,
-                             mpd_Connection *conn) __attribute__((nonnull));
+                            mpd_Connection *conn) __attribute__((nonnull));
 
 
 /**

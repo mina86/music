@@ -1,6 +1,6 @@
 /*
  * SHA1 Implementation
- * $Id: sha1.c,v 1.3 2007/09/26 18:02:13 mina86 Exp $
+ * $Id: sha1.c,v 1.4 2007/09/27 21:37:41 mina86 Exp $
  * Copyright (c) 2007 by Michal Nazarewicz (mina86/AT/mina86.com)
  *
  * This program is free software; you can redistribute it and/or modify
@@ -138,6 +138,8 @@ unsigned char *sha1(unsigned char *restrict hash,
  *          then 32).
  * @return value rotatt n bits left.
  */
+static inline uint32_t rol(uint32_t value, unsigned n)
+	__attribute__((always_inline, const));
 static inline uint32_t rol(uint32_t value, unsigned n) {
 	return (value << n) | (value >> (32 - n));
 }
@@ -150,6 +152,9 @@ static inline uint32_t rol(uint32_t value, unsigned n) {
  * @param block 512-bit long block to handle.
  * @param state SHA1 state.
  */
+static void sha1_block(const unsigned char *restrict block,
+                       uint32_t *restrict state)
+	__attribute__((nonnull));
 static void sha1_block(const unsigned char *restrict block,
                        uint32_t *restrict state) {
 	uint32_t w[16], a = state[0], b = state[1], c = state[2], d = state[3],

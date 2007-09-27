@@ -1,6 +1,6 @@
 /*
  * SHA1 Implementation
- * $Id: sha1.h,v 1.5 2007/09/26 22:23:23 mina86 Exp $
+ * $Id: sha1.h,v 1.6 2007/09/27 21:37:41 mina86 Exp $
  * Copyright (c) 2007 by Michal Nazarewicz (mina86/AT/mina86.com)
  *
  * This program is free software; you can redistribute it and/or modify
@@ -34,7 +34,8 @@
  * @return location where hash was saved (ie. value of hash argument).
  */
 unsigned char *sha1(unsigned char hash[20],
-                    const unsigned char *restrict message, unsigned long len);
+                    const unsigned char *restrict message, unsigned long len)
+	__attribute__((nonnull));
 
 
 /**
@@ -48,7 +49,8 @@ unsigned char *sha1(unsigned char hash[20],
  * @return location where hash was saved (ie. value of hash argument).
  */
 char    *sha1_hex(char hash[41],
-                  const unsigned char *restrict message, unsigned long len);
+                  const unsigned char *restrict message, unsigned long len)
+	__attribute__((nonnull));
 
 
 /**
@@ -62,6 +64,7 @@ char    *sha1_hex(char hash[41],
  * @return location where hash was saved (ie. value of hash argument).
  */
 char    *sha1_b64(char hash[29],
-                  const unsigned char *restrict message, unsigned long len);
+                  const unsigned char *restrict message, unsigned long len)
+	__attribute__((nonnull));
 
 #endif
