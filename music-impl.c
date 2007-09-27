@@ -1,6 +1,6 @@
 /*
  * "Listening to" daemon library functions implementation
- * $Id: music-impl.c,v 1.9 2007/09/26 22:23:53 mina86 Exp $
+ * $Id: music-impl.c,v 1.10 2007/09/27 14:26:24 mina86 Exp $
  * Copyright (c) 2007 by Michal Nazarewicz (mina86/AT/mina86.com)
  *
  * This program is free software; you can redistribute it and/or modify
@@ -97,19 +97,28 @@ static void music_log_internal_do(FILE *restrict stream,
 static void music_log_internal(const struct music_module *restrict m,
                                unsigned level, const char *restrict fmt,
                                va_list ap, int errStr) {
+	static const char levelChars[] = "FfEeWwNnDd";
+
 	static char buf[32];
 	struct config *cfg = m->core->data;
 	char *str;
 	time_t t;
 
 	if (cfg->loglevel < level) return;
+	if (level>LOG_DEBUG+3) return;
 
 	t = time(0);
-	if (!strftime(buf, sizeof buf, "[%Y/%m/%d %H:%M:%S] ", gmtime(&t))) {
-		buf[0] = 0;
-	}
-
 	pthread_mutex_lock(&cfg->log_mutex);
+
+	if (strftime(buf, sizeof buf, "[%Y/%m/%d %H:%M:%S] ( ) ", gmtime(&t))) {
+		buf[23] = levelChars[level / 2];
+	} else {
+		buf[0] = '(';
+		buf[1] = levelChars[level / 2];
+		buf[2] = ')';
+		buf[3] = ' ';
+		buf[4] = 0;
+	}
 
 	str = errStr ? strerror(errno) : 0;
 
