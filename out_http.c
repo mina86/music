@@ -1,6 +1,6 @@
 /*
  * "Listening to" daemon MPD input module
- * $Id: out_http.c,v 1.10 2007/09/27 21:37:41 mina86 Exp $
+ * $Id: out_http.c,v 1.11 2007/10/03 20:28:22 mina86 Exp $
  * Copyright (c) 2007 by Michal Nazarewicz (mina86/AT/mina86.com)
  *
  * This program is free software; you can redistribute it and/or modify
@@ -1090,14 +1090,26 @@ int    request_handleBodyCont(struct request *restrict r,
 /**
  * Tells whether character needs to be escaped.
  *
+ * @note As with ROL macro defined in sha1.c, escape_char inline
+ * function was replaced by IS_ESCAPE_CHAR macro because my tests on
+ * sha1 revealed that GCC has (had?) some problems with optimising
+ * very simple inline functions and therefore now we have macro here
+ * instead of inline function.
+ *
  * @param ch character to chec.
  * @return 1 if charactr needs to be escaped, 0 otherwise.
  */
-static inline int escape_char(unsigned char ch)
+#if 1
+#  define IS_ESCAPE_CHAR(ch) \
+	(((unsigned char)(ch)) < 0x30 || (((unsigned char)(ch)) > 0x39 && \
+	 ((unsigned char)(ch)) < 0x41) || ((unsigned char)(ch)) > 0x7f);
+#else
+static inline int IS_ESCAPE_CHAR(unsigned char ch)
 	__attribute__((always_inline));
-static inline int escape_char(unsigned char ch) {
+static inline int IS_ESCAPE_CHAR(unsigned char ch) {
 	return ch < 0x30 || (ch > 0x39 && ch < 0x41) || ch > 0x7f;
 }
+#endif
 
 
 static size_t escape(char *dest, const char *src, size_t n) {
@@ -1106,7 +1118,7 @@ static size_t escape(char *dest, const char *src, size_t n) {
 	size_t pos = 0;
 	for (; *src; ++src) {
 		const unsigned char ch = (unsigned char)*src;
-		if (escape_char(ch)) {
+		if (IS_ESCAPE_CHAR(ch)) {
 			if (pos+2<n) {
 				dest[pos++] = '%';
 				dest[pos++] = xdigits[ch >> 4];
@@ -1128,10 +1140,15 @@ static size_t escape(char *dest, const char *src, size_t n) {
 static size_t escapeLength(const char *src) {
 	size_t count = 0;
 	for (; *src; ++src) {
-		count += (escape_char(*src) << 1) | 1;
+		count += (IS_ESCAPE_CHAR(*src) << 1) | 1;
 	}
 	return count;
 }
+
+
+#if defined IS_ESCAPE_CHAR
+#  undef IS_ESCAPE_CHAR
+#endif
 
 
 
