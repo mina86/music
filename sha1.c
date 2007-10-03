@@ -1,6 +1,6 @@
 /*
  * SHA1 Implementation
- * $Id: sha1.c,v 1.4 2007/09/27 21:37:41 mina86 Exp $
+ * $Id: sha1.c,v 1.5 2007/10/03 20:28:00 mina86 Exp $
  * Copyright (c) 2007 by Michal Nazarewicz (mina86/AT/mina86.com)
  *
  * This program is free software; you can redistribute it and/or modify
@@ -23,13 +23,29 @@
 #include <string.h>
 
 
-char    *sha1_hex(char *restrict hash,
-                  const unsigned char *restrict message, unsigned long len) {
+
+/******************** Use OpenSSL if we have it ********************/
+#if HAVE_OPENSSL_H
+#  include <openssl/sha.h>
+unsigned char *sha1(unsigned char hash[20], const unsigned char *message,
+                    unsigned long len){
+	SHA1(message, len, hash);
+	return hash;
+}
+#else
+#  define SHA1(message, len, hash) ((void)sha1((hash), (message), (len)))
+#endif
+
+
+
+/******************** Common part ********************/
+char    *sha1_hex(char hash[41], const unsigned char *message,
+                  unsigned long len) {
 	static const char hexdigits[16] = "0123456789abcdef";
 	unsigned char temp[20], *rd = temp, *const end = temp + 20;
 	char *wr = hash;
 
-	sha1(rd, message, len);
+	SHA1(message, len, rd);
 
 	while (rd!=end) {
 		*wr++ = hexdigits[(*rd & 0xf0) >> 4];
@@ -43,13 +59,13 @@ char    *sha1_hex(char *restrict hash,
 
 
 
-char    *sha1_b64(char *restrict hash,
-                  const unsigned char *restrict message, unsigned long len) {
+char    *sha1_b64(char hash[29], const unsigned char *message,
+                  unsigned long len) {
 	static const char b64digits[64] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 	unsigned char temp[20], *rd = temp, *const end = temp + 18;
 	char *wr = hash;
 
-	sha1(rd, message, len);
+	SHA1(message, len, rd);
 
 	while (rd!=end) {
 		*wr++ = b64digits[(rd[0] & 0xff) >> 2];
@@ -69,10 +85,20 @@ char    *sha1_b64(char *restrict hash,
 
 
 
+/******************** No OpenSSL ********************/
+#if !HAVE_OPENSSL_H
+
+#if !defined UINT32_MAX
+#  error "This code requires uint32_t type to be present."
+#endif
+
+
 /*************** uint32_t <-> big endian conversion macros ***************/
 #if HAVE_ENDIAN_H
 #  include <endian.h>
-#  if __BYTE_ORDER == __BIG_ENDIAN
+#  if defined BYTE_ORDER && defined BIG_ENDIAN && BYTE_ORDER == BIG_ENDIAN
+#    define SHA1_BIG_ENDIAN 1
+#  elif defined __BYTE_ORDER && defined __BIG_ENDIAN && __BYTE_ORDER == __BIG_ENDIAN
 #    define SHA1_BIG_ENDIAN 1
 #  else
 #    define SHA1_BIG_ENDIAN 0
@@ -116,33 +142,36 @@ char    *sha1_b64(char *restrict hash,
 
 
 
-/******************** Use OpenSSL if we have it ********************/
-#if HAVE_OPENSSL_H
-#include <openssl/sha.h>
+/******************** Our own implementation ********************/
+#ifdef ROL
+#  undef ROL
+#endif
 
-unsigned char *sha1(unsigned char *restrict hash,
-                    const unsigned char *restrict message, unsigned long len){
-	SHA1(message, len, hash);
-	return hash;
-}
-
-
-
-/******************** Otherwise our own implementation ********************/
-#else
 /**
  * Rotates value left given number of bits.
+ *
+ * @note It was a inline function first but surprisingly code with
+ * inline function worked 25% slower!  Pretty strange that gcc did not
+ * menage to optimise code with inline function the way it should.
+ *
+ * @note I have also experimented with inline assembly code in GCC 4
+ * but noticed no improvements.  I suppose there may be some in
+ * earlier versions of GCC but that's not really worth effort.
  *
  * @param value value to rotate.
  * @param n number of bits to rotate (must be greater then 0 and lower
  *          then 32).
  * @return value rotatt n bits left.
  */
-static inline uint32_t rol(uint32_t value, unsigned n)
-	__attribute__((always_inline, const));
-static inline uint32_t rol(uint32_t value, unsigned n) {
+#if 1
+#  define ROL(value, n) ((uint32_t)(value) << (n)) | ((uint32_t)(value) >> (32 - (n)));
+#else
+static inline uint32_t ROL(const uint32_t value, const unsigned n) __attribute__((always_inline));
+static inline uint32_t ROL(const uint32_t value, const unsigned n) {
 	return (value << n) | (value >> (32 - n));
 }
+#endif
+
 
 
 
@@ -166,44 +195,44 @@ static void sha1_block(const unsigned char *restrict block,
 		uint32_t f = 0x5A827999 + (d ^ (b & (c ^ d)));
 		w[i] = BE2INT(block);
 		block += 4;
-		f += rol(a, 5) + e + w[i];
-		e = d; d = c; c = rol(b, 30); b = a; a = f;
+		f += ROL(a, 5) + e + w[i];
+		e = d; d = c; c = ROL(b, 30); b = a; a = f;
 	}
 
 	/* 16 <= i < 20 */
 	for (; i < 20; ++i) {
 		uint32_t f = 0x5A827999 + (d ^ (b & (c ^ d)));
 		unsigned j = i & 15;
-		w[j] = rol(w[(j+13)&15] ^ w[(j+8)&15] ^ w[(j+2)&15] ^ w[j], 1);
-		f += rol(a, 5) + e + w[j];
-		e = d; d = c; c = rol(b, 30); b = a; a = f;
+		w[j] = ROL(w[(j+13)&15] ^ w[(j+8)&15] ^ w[(j+2)&15] ^ w[j], 1);
+		f += ROL(a, 5) + e + w[j];
+		e = d; d = c; c = ROL(b, 30); b = a; a = f;
 	}
 
 	/* 20 <= i < 40 */
 	for (; i < 40; ++i) {
 		uint32_t f = 0x6ED9EBA1 + (b ^ c ^ d);
 		unsigned j = i & 15;
-		w[j] = rol(w[(j+13)&15] ^ w[(j+8)&15] ^ w[(j+2)&15] ^ w[j], 1);
-		f += rol(a, 5) + e + w[j];
-		e = d; d = c; c = rol(b, 30); b = a; a = f;
+		w[j] = ROL(w[(j+13)&15] ^ w[(j+8)&15] ^ w[(j+2)&15] ^ w[j], 1);
+		f += ROL(a, 5) + e + w[j];
+		e = d; d = c; c = ROL(b, 30); b = a; a = f;
 	}
 
 	/* 40 <= i < 60 */
 	for (; i < 60; ++i) {
 		uint32_t f = 0x8F1BBCDC + ((b & c) | (d & (b | c)));
 		unsigned j = i & 15;
-		w[j] = rol(w[(j+13)&15] ^ w[(j+8)&15] ^ w[(j+2)&15] ^ w[j], 1);
-		f += rol(a, 5) + e + w[j];
-		e = d; d = c; c = rol(b, 30); b = a; a = f;
+		w[j] = ROL(w[(j+13)&15] ^ w[(j+8)&15] ^ w[(j+2)&15] ^ w[j], 1);
+		f += ROL(a, 5) + e + w[j];
+		e = d; d = c; c = ROL(b, 30); b = a; a = f;
 	}
 
 	/* 60 <= i < 80 */
 	for (; i < 80; ++i) {
 		uint32_t f = 0xCA62C1D6 + (b ^ c ^ d);
 		unsigned j = i & 15;
-		w[j] = rol(w[(j+13)&15] ^ w[(j+8)&15] ^ w[(j+2)&15] ^ w[j], 1);
-		f += rol(a, 5) + e + w[j];
-		e = d; d = c; c = rol(b, 30); b = a; a = f;
+		w[j] = ROL(w[(j+13)&15] ^ w[(j+8)&15] ^ w[(j+2)&15] ^ w[j], 1);
+		f += ROL(a, 5) + e + w[j];
+		e = d; d = c; c = ROL(b, 30); b = a; a = f;
 	}
 
 	state[0] += a; state[1] += b; state[2] += c; state[3] += d; state[4] += e;
@@ -211,8 +240,8 @@ static void sha1_block(const unsigned char *restrict block,
 
 
 
-unsigned char *sha1(unsigned char *restrict hash,
-                    const unsigned char *restrict message, unsigned long len){
+unsigned char *sha1(unsigned char *hash, const unsigned char *message,
+                    unsigned long len) {
 	uint32_t state[5] = {
 		0x67452301, 0xEFCDAB89, 0x98BADCFE, 0x10325476, 0xC3D2E1F0
 	}, i;
