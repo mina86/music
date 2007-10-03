@@ -1,6 +1,6 @@
 /*
  * SHA1 Implementation
- * $Id: sha1.h,v 1.6 2007/09/27 21:37:41 mina86 Exp $
+ * $Id: sha1.h,v 1.7 2007/10/03 20:24:30 mina86 Exp $
  * Copyright (c) 2007 by Michal Nazarewicz (mina86/AT/mina86.com)
  *
  * This program is free software; you can redistribute it and/or modify
@@ -28,14 +28,15 @@
  * Calculates SHA1 of a given string.  Hash is saved in binary and
  * consists of 20 (8-bit) bytes.
  *
+ * <var>hash</var> and <var>message</var> may overlap.
+ *
  * @param hash location where to save hash.
  * @param message message to calculate SHA1 of.
  * @param len message's length in 8-bit bytes.
  * @return location where hash was saved (ie. value of hash argument).
  */
-unsigned char *sha1(unsigned char hash[20],
-                    const unsigned char *restrict message, unsigned long len)
-	__attribute__((nonnull));
+unsigned char *sha1(unsigned char hash[20], const unsigned char *message,
+                    unsigned long len) __attribute__((nonnull));
 
 
 /**
@@ -43,14 +44,15 @@ unsigned char *sha1(unsigned char hash[20],
  * representation and consists of 40 characters and a terminating NUL
  * byte.
  *
+ * <var>hash</var> and <var>message</var> may overlap.
+ *
  * @param hash location where to save hash.
  * @param message message to calculate SHA1 of.
  * @param len message's length in 8-bit bytes.
  * @return location where hash was saved (ie. value of hash argument).
  */
-char    *sha1_hex(char hash[41],
-                  const unsigned char *restrict message, unsigned long len)
-	__attribute__((nonnull));
+char    *sha1_hex(char hash[41], const unsigned char *message,
+                  unsigned long len) __attribute__((nonnull));
 
 
 /**
@@ -58,13 +60,14 @@ char    *sha1_hex(char hash[41],
  * encodind and consists of 28 characters (the last one is an equal
  * sign) and a terminating NUL byte.
  *
+ * <var>hash</var> and <var>message</var> may overlap.
+ *
  * @param hash location where to save hash.
  * @param message message to calculate SHA1 of.
  * @param len message's length in 8-bit bytes.
  * @return location where hash was saved (ie. value of hash argument).
  */
-char    *sha1_b64(char hash[29],
-                  const unsigned char *restrict message, unsigned long len)
-	__attribute__((nonnull));
+char    *sha1_b64(char hash[29], const unsigned char *message,
+                  unsigned long len) __attribute__((nonnull));
 
 #endif
