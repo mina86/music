@@ -1,0 +1,11 @@
+loglevel 16
+
+module in_mpd
+
+module in_dummy
+
+module out_http
+url http://localhost/~mina86/music.php
+username mina86
+password zaq12wsx
+verbose
