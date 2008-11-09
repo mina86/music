@@ -1,6 +1,5 @@
-/*
- * "Listening to" daemon
- * $Id: music.c,v 1.10 2007/09/26 18:00:32 mina86 Exp $
+/**
+ * "Listening to" daemon.
  * Copyright (c) 2007 by Michal Nazarewicz (mina86/AT/mina86.com)
  *
  * This program is free software; you can redistribute it and/or modify

@@ -1,6 +1,5 @@
-/*
+/**
  * "Listening to" daemon songs dispatcher.
- * $Id: dispatcher.c,v 1.4 2007/09/27 21:37:41 mina86 Exp $
  * Copyright (c) 2007 by Michal Nazarewicz (mina86/AT/mina86.com)
  *
  * This program is free software; you can redistribute it and/or modify

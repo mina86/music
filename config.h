@@ -1,6 +1,5 @@
-/*
- * "Listening to" daemon configuration file
- * $Id: config.h,v 1.8 2007/09/26 22:22:49 mina86 Exp $
+/**
+ * "Listening to" daemon configuration file.
  * Copyright (c) 2007 by Michal Nazarewicz (mina86/AT/mina86.com)
  *
  * This program is free software; you can redistribute it and/or modify

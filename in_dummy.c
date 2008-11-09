@@ -1,6 +1,5 @@
-/*
- * "Listening to" daemon dummy input module
- * $Id: in_dummy.c,v 1.11 2007/09/26 22:23:53 mina86 Exp $
+/**
+ * "Listening to" daemon dummy input module.
  * Copyright (c) 2007 by Michal Nazarewicz (mina86/AT/mina86.com)
  *
  * This program is free software; you can redistribute it and/or modify

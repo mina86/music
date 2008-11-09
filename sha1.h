@@ -1,6 +1,5 @@
-/*
- * SHA1 Implementation
- * $Id: sha1.h,v 1.7 2007/10/03 20:24:30 mina86 Exp $
+/**
+ * SHA1 Implementation.
  * Copyright (c) 2007 by Michal Nazarewicz (mina86/AT/mina86.com)
  *
  * This program is free software; you can redistribute it and/or modify

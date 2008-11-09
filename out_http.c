@@ -1,6 +1,5 @@
-/*
- * "Listening to" daemon MPD input module
- * $Id: out_http.c,v 1.11 2007/10/03 20:28:22 mina86 Exp $
+/**
+ * "Listening to" daemon MPD input module.
  * Copyright (c) 2007 by Michal Nazarewicz (mina86/AT/mina86.com)
  *
  * This program is free software; you can redistribute it and/or modify
@@ -1102,7 +1101,7 @@ int    request_handleBodyCont(struct request *restrict r,
 #if 1
 #  define IS_ESCAPE_CHAR(ch) \
 	(((unsigned char)(ch)) < 0x30 || (((unsigned char)(ch)) > 0x39 && \
-	 ((unsigned char)(ch)) < 0x41) || ((unsigned char)(ch)) > 0x7f);
+	 ((unsigned char)(ch)) < 0x41) || ((unsigned char)(ch)) > 0x7f)
 #else
 static inline int IS_ESCAPE_CHAR(unsigned char ch)
 	__attribute__((always_inline));

@@ -1,6 +1,5 @@
-/*
- * "Listening to" daemon internal header file
- * $Id: music-int.h,v 1.3 2007/09/26 17:59:47 mina86 Exp $
+/**
+ * "Listening to" daemon internal header file.
  * Copyright (c) 2007 by Michal Nazarewicz (mina86/AT/mina86.com)
  *
  * This program is free software; you can redistribute it and/or modify

@@ -1,6 +1,5 @@
-/*
- * MPD Protocol Implementation
- * $Id: libmpdclient.c,v 1.3 2007/09/10 17:51:01 mina86 Exp $
+/**
+ * MPD Protocol Implementation.
  * Copyright (c) 2003-2006 by Warren Dukes (warren.dukes@gmail.com)
  *
  * This program is free software; you can redistribute it and/or modify

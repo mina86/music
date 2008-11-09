@@ -1,6 +1,5 @@
-/*
- * "Listening to" daemon header file
- * $Id: music.h,v 1.14 2007/09/27 21:37:41 mina86 Exp $
+/**
+ * "Listening to" daemon header file.
  * Copyright (c) 2007 by Michal Nazarewicz (mina86/AT/mina86.com)
  *
  * This program is free software; you can redistribute it and/or modify
